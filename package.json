@@ -9,6 +9,18 @@
   "author": "",
   "license": "ISC",
   "description": "",
+  "build": {
+    "appId": "com.lmutracker.app",
+    "productName": "LMU Tracker",
+    "icon": "LMUTrackerLogo.webp",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/*"
+    ]
+  },
   "devDependencies": {
     "electron": "^38.2.0"
   },

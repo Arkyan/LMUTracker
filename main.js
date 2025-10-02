@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const { XMLParser } = require('fast-xml-parser');
 const parserOptions = {
   ignoreAttributes: false,
@@ -9,17 +10,34 @@ const parserOptions = {
 };
 
 function createWindow() {
+  // Choisir l'icône selon la disponibilité (ICO préférable sur Windows)
+  let iconPath = path.join(__dirname, 'LMUTrackerLogo.webp');
+  const icoPath = path.join(__dirname, 'LMUTrackerLogo.ico');
+  const pngPath = path.join(__dirname, 'LMUTrackerLogo.png');
+  
+  if (fsSync.existsSync(icoPath)) {
+    iconPath = icoPath;
+  } else if (fsSync.existsSync(pngPath)) {
+    iconPath = pngPath;
+  }
+
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1200,
     minHeight: 800,
+    icon: iconPath,
+    autoHideMenuBar: true, // Cache la barre de menus par défaut (peut être réaffichée avec Alt)
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
+
+  // Supprimer complètement la barre de menus
+  win.setMenuBarVisibility(false);
+  win.setMenu(null);
 
   win.loadFile('index.html');
   win.maximize();

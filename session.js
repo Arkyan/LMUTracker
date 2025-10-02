@@ -44,7 +44,22 @@
     const sectors = arrayify(stream?.Sector).map(s=>({ et:toNumber(s?.['@_et']??s?.et), text: typeof s==='string'? s : (s?.['#text']||'')}));
     const scores = arrayify(stream?.Score).map(s=>({ et:toNumber(s?.['@_et']??s?.et), text: typeof s==='string'? s : (s?.['#text']||'')}));
     const incidents = arrayify(stream?.Incident).map(s=>({ et:toNumber(s?.['@_et']??s?.et), text: typeof s==='string'? s : (s?.['#text']||'')}));
-    const meta = { session:name, track: rr.TrackVenue||rr.TrackCourse||'', event: rr.TrackEvent||'', time: rr.TimeString||'', mostLaps: toNumber(node.MostLapsCompleted)||toNumber(rr.MostLapsCompleted)||NaN, sectors, scores, incidents };
+    
+    // Formatage de la date en français à partir du timestamp DateTime
+    let formattedTime = '';
+    if (rr.DateTime) {
+      try {
+        const timestamp = parseInt(rr.DateTime) * 1000; // Convertir en millisecondes
+        const date = new Date(timestamp);
+        formattedTime = date.toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit', year:'numeric'}) + ' à ' + date.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+      } catch {
+        formattedTime = rr.TimeString || '';
+      }
+    } else {
+      formattedTime = rr.TimeString || '';
+    }
+    
+    const meta = { session:name, track: rr.TrackVenue||rr.TrackCourse||'', event: rr.TrackEvent||'', time: formattedTime, mostLaps: toNumber(node.MostLapsCompleted)||toNumber(rr.MostLapsCompleted)||NaN, sectors, scores, incidents };
     const drivers = extractDrivers(node);
     return { meta, drivers };
   }

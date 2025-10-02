@@ -11,7 +11,10 @@
 </head>
 <body>
   <header class="app-header">
-    <div class="brand">🏁 LMU Tracker</div>
+    <div class="brand">
+      <img src="LMUTrackerLogo.webp" alt="LMU Tracker Logo" class="brand-logo">
+      <span class="brand-text">LMU Tracker</span>
+    </div>
     <nav class="nav">
       <button class="nav-btn active" data-view="results">📊 Résultats</button>
       <button class="nav-btn" data-view="settings">⚙️ Settings</button>
@@ -24,6 +27,13 @@
     <section id="view-settings" class="view">
       <div class="card">
         <h2 style="margin-bottom:16px;font-size:22px;background:linear-gradient(135deg,var(--brand),var(--accent));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">⚙️ Paramètres</h2>
+        
+        <div class="form-row" style="margin-bottom:20px;">
+          <label style="display:block;margin-bottom:8px;font-weight:500;color:var(--text);">🏁 Nom de pilote</label>
+          <input type="text" id="driverName" placeholder="Saisissez votre nom de pilote" style="min-width:300px;" />
+          <small class="muted" style="display:block;margin-top:8px;">Ce nom sera utilisé pour identifier vos statistiques personnelles.</small>
+        </div>
+        
         <div class="form-row" style="margin-bottom:20px;">
           <label style="display:block;margin-bottom:8px;font-weight:500;color:var(--text);">📁 Dossier des résultats (.xml)</label>
           <div class="row">

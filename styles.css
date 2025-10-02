@@ -46,13 +46,25 @@ body{
   z-index:100;
 }
 .brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
   font-weight:700;
   font-size:20px;
+  letter-spacing:-0.5px;
+}
+
+.brand-logo{
+  width:50px;
+  height:50px;
+  object-fit:contain;
+  border-radius:6px;
+}
+.brand-text{
   background:linear-gradient(135deg,var(--brand) 0%,var(--accent) 100%);
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
   background-clip:text;
-  letter-spacing:-0.5px;
 }
 
 /* Navigation pills moderne */
@@ -283,6 +295,8 @@ pre{
   font-size:12px;
   background:var(--panel);
   box-shadow:var(--shadow-sm);
+  margin-right:8px;
+  margin-bottom:4px;
 }
 .badge{
   display:inline-flex;
