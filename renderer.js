@@ -30,6 +30,9 @@ const fileSelect = document.getElementById('fileSelect');
 const btnShowFile = document.getElementById('btnShowFile');
 let lastScannedFiles = null; // [{filePath, parsed}] ou erreurs
 let lastSession = null; // session extraite du fichier affiché
+let cachedStats = null; // cache pour les statistiques calculées
+let cachedTrackStats = null; // cache pour les statistiques par circuit
+let selectedCarClass = 'Hyper'; // filtre de classe sélectionné
 
 function loadSavedFolder() {
   const saved = localStorage.getItem('lmu.resultsFolder') || '';
@@ -66,9 +69,9 @@ function generateProfileContent() {
     return;
   }
   
-  // Calculer les statistiques depuis les sessions scannées
-  const stats = calculateDriverStats(driverName);
-  const trackStats = calculateTrackStats(driverName);
+  // Calculer les statistiques depuis les sessions scannées (avec cache)
+  const stats = getCachedDriverStats(driverName);
+  const trackStats = getCachedTrackStats(driverName);
   
   let html = `
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;margin-bottom:24px;">
@@ -143,43 +146,19 @@ function generateProfileContent() {
     // Trier par nombre de sessions décroissant
     trackStatsEntries.sort((a, b) => b.sessions - a.sessions);
     
+    // Filtrer par classe sélectionnée
+    const filteredTrackStats = trackStatsEntries.filter(track => track.classStats && track.classStats[selectedCarClass]);
+    
     html += `
       <div class="card" style="margin-bottom:24px;">
-        <h3 style="margin:0 0 16px 0;color:var(--accent);">🏁 Performance par Circuit</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h3 style="margin:0;color:var(--accent);">🏁 Performance par Circuit</h3>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${generateClassFilterButtons()}
+          </div>
+        </div>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;">
-          ${trackStatsEntries.map(track => {
-            const bestLapText = isFinite(track.bestLap) ? fmtTime(track.bestLap) : '—';
-            const avgLapText = isFinite(track.avgLap) ? fmtTime(track.avgLap) : '—';
-            const topSpeedText = track.topSpeed > 0 ? `${track.topSpeed.toFixed(1)} km/h` : '—';
-            const lastSessionText = track.lastSession > new Date(0) ? 
-              track.lastSession.toLocaleDateString('fr-FR') : '—';
-            
-            return `
-            <div style="padding:16px;background:var(--panel);border-radius:8px;border:2px solid var(--border);border-left:4px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-              <div style="margin-bottom:12px;">
-                <div style="font-weight:600;color:var(--text);margin-bottom:6px;">🏎️ ${track.trackName}</div>
-                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
-                  <span style="font-size:12px;color:var(--muted);">📊 ${track.sessions} session(s)</span>
-                  <span style="font-size:12px;color:var(--muted);">🔄 ${track.totalLaps || 0} tour(s)</span>
-                  <span style="font-size:12px;color:var(--muted);">📅 ${lastSessionText}</span>
-                </div>
-              </div>
-              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center;">
-                <div>
-                  <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">⏱️ MEILLEUR</div>
-                  <div style="font-weight:600;color:var(--ok);font-size:14px;">${bestLapText}</div>
-                </div>
-                <div>
-                  <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">📊 MOYENNE</div>
-                  <div style="font-weight:600;color:var(--text);font-size:14px;">${avgLapText}</div>
-                </div>
-                <div>
-                  <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">🚀 V.MAX</div>
-                  <div style="font-weight:600;color:var(--accent);font-size:14px;">${topSpeedText}</div>
-                </div>
-              </div>
-            </div>`;
-          }).join('')}
+          ${generateTrackCards(filteredTrackStats, selectedCarClass)}
         </div>
       </div>
     `;
@@ -202,47 +181,7 @@ function generateProfileContent() {
       <div class="card">
         <h3 style="margin:0 0 16px 0;color:var(--accent);">📅 Sessions récentes</h3>
         <div style="display:grid;gap:12px;">
-          ${stats.recentSessions.slice(0, 5).map(session => {
-            // Déterminer le type et l'icône de session
-            const sessionType = session.session.toLowerCase();
-            let sessionIcon = '🏎️';
-            let sessionBadge = '';
-            
-            if (sessionType.includes('race')) {
-              sessionIcon = '🏁';
-              sessionBadge = '<span style="background:#ef4444;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">COURSE</span>';
-            } else if (sessionType.includes('qual')) {
-              sessionIcon = '⏱️';
-              sessionBadge = '<span style="background:#f97316;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">QUALIF</span>';
-            } else if (sessionType.includes('practice') || sessionType.includes('practise')) {
-              sessionIcon = '🏃';
-              sessionBadge = '<span style="background:#22c55e;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">PRACTICE</span>';
-            } else {
-              sessionIcon = '📊';
-              sessionBadge = '<span style="background:var(--muted);color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">SESSION</span>';
-            }
-            
-            // Badge pour le mode de jeu
-            const gameModeBadge = session.gameMode === 'Multijoueur' 
-              ? '<span style="background:#8b5cf6;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;">🌐 MULTI</span>'
-              : '<span style="background:#64748b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;">👤 SOLO</span>';
-            
-            return `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--panel);border-radius:8px;">
-              <div style="display:flex;align-items:center;gap:12px;">
-                <div style="font-size:20px;">${sessionIcon}</div>
-                <div>
-                  <div style="font-weight:600;color:var(--text);margin-bottom:4px;">${session.event}</div>
-                  <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${session.track} • ${session.date}</div>
-                  <div>${sessionBadge}${gameModeBadge}</div>
-                </div>
-              </div>
-              <div style="text-align:right;">
-                <div style="font-weight:600;color:var(--ok);">${fmtTime(session.bestLap)}</div>
-                <div style="font-size:12px;color:var(--muted);">P${session.position || '?'}</div>
-              </div>
-            </div>`;
-          }).join('')}
+          ${generateRecentSessionCards(stats.recentSessions.slice(0, 5))}
         </div>
         ${stats.recentSessions.length > 5 ? `
           <div style="margin-top:16px;text-align:center;">
@@ -366,6 +305,164 @@ function calculateDriverStats(driverName) {
   return stats;
 }
 
+// Fonctions de cache pour optimiser les performances
+function getCachedDriverStats(driverName) {
+  if (!cachedStats || cachedStats.driverName !== driverName || cachedStats.filesLength !== (lastScannedFiles?.length || 0)) {
+    cachedStats = {
+      driverName,
+      filesLength: lastScannedFiles?.length || 0,
+      data: calculateDriverStats(driverName)
+    };
+  }
+  return cachedStats.data;
+}
+
+function getCachedTrackStats(driverName) {
+  if (!cachedTrackStats || cachedTrackStats.driverName !== driverName || cachedTrackStats.filesLength !== (lastScannedFiles?.length || 0) || cachedTrackStats.selectedClass !== selectedCarClass) {
+    cachedTrackStats = {
+      driverName,
+      filesLength: lastScannedFiles?.length || 0,
+      selectedClass: selectedCarClass,
+      data: calculateTrackStats(driverName)
+    };
+  }
+  return cachedTrackStats.data;
+}
+
+// Fonction optimisée pour générer les cartes de circuit
+function generateTrackCards(trackStatsEntries, carClass = 'Hyper') {
+  const cards = [];
+  for (const track of trackStatsEntries) {
+    // Utiliser les stats de la classe spécifique
+    const stats = track.classStats && track.classStats[carClass] 
+      ? track.classStats[carClass] 
+      : null;
+    
+    if (!stats) continue; // Ignorer si pas de stats pour cette classe
+    
+    const bestLapText = isFinite(stats.bestLap) ? fmtTime(stats.bestLap) : '—';
+    const avgLapText = isFinite(stats.avgLap) ? fmtTime(stats.avgLap) : '—';
+    const topSpeedText = stats.topSpeed > 0 ? `${stats.topSpeed.toFixed(1)} km/h` : '—';
+    const lastSessionText = track.lastSession > new Date(0) ? 
+      track.lastSession.toLocaleDateString('fr-FR') : '—';
+    
+    // Utiliser les stats de la classe sélectionnée
+    const sessionCount = stats.sessions || 0;
+    const lapCount = stats.totalLaps || 0;
+    
+    cards.push(`
+    <div style="padding:16px;background:var(--panel);border-radius:8px;border:2px solid var(--border);border-left:4px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+      <div style="margin-bottom:12px;">
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px;">🏎️ ${track.trackName}</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+          <span style="font-size:12px;color:var(--muted);">📊 ${sessionCount} session(s)</span>
+          <span style="font-size:12px;color:var(--muted);">🔄 ${lapCount} tour(s)</span>
+          <span style="font-size:12px;color:var(--muted);">📅 ${lastSessionText}</span>
+          <span style="font-size:12px;color:var(--accent);font-weight:600;">🏁 ${carClass}</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center;">
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">⏱️ MEILLEUR</div>
+          <div style="font-weight:600;color:var(--ok);font-size:14px;">${bestLapText}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">📊 MOYENNE</div>
+          <div style="font-weight:600;color:var(--text);font-size:14px;">${avgLapText}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">🚀 V.MAX</div>
+          <div style="font-weight:600;color:var(--accent);font-size:14px;">${topSpeedText}</div>
+        </div>
+      </div>
+    </div>`);
+  }
+  return cards.join('');
+}
+
+// Fonction pour générer les boutons de filtre par classe
+function generateClassFilterButtons() {
+  const classes = ['Hyper','LMP2_ELMS', 'LMP2', 'LMP3', 'GT3', 'GTE'];
+  const classIcons = {
+    'Hyper': '⚡',
+    'LMP2': '🚀', 
+    'LMP2_ELMS': '🚀',
+    'LMP3': '🏃',
+    'GT3': '🏎️',
+    'GTE': '🔥'
+  };
+  
+  return classes.map(carClass => {
+    const isActive = selectedCarClass === carClass;
+    const icon = classIcons[carClass] || '🏁';
+    return `
+      <button 
+        class="btn ${isActive ? 'primary' : ''}" 
+        style="font-size:12px;padding:6px 12px;${isActive ? '' : 'background:var(--panel);color:var(--text);'}"
+        onclick="filterByCarClass('${carClass}')"
+      >
+        ${icon} ${carClass}
+      </button>
+    `;
+  }).join('');
+}
+
+// Fonction pour filtrer par classe de voiture
+function filterByCarClass(carClass) {
+  selectedCarClass = carClass;
+  // Invalider le cache des stats par circuit car le filtre a changé
+  cachedTrackStats = null;
+  // Régénérer le contenu du profil
+  generateProfileContent();
+}
+
+// Fonction optimisée pour générer les cartes de sessions récentes
+function generateRecentSessionCards(sessions) {
+  const cards = [];
+  for (const session of sessions) {
+    // Déterminer le type et l'icône de session
+    const sessionType = session.session.toLowerCase();
+    let sessionIcon = '🏎️';
+    let sessionBadge = '';
+    
+    if (sessionType.includes('race')) {
+      sessionIcon = '🏁';
+      sessionBadge = '<span style="background:#ef4444;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">COURSE</span>';
+    } else if (sessionType.includes('qual')) {
+      sessionIcon = '⏱️';
+      sessionBadge = '<span style="background:#f97316;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">QUALIF</span>';
+    } else if (sessionType.includes('practice') || sessionType.includes('practise')) {
+      sessionIcon = '🏃';
+      sessionBadge = '<span style="background:#22c55e;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">PRACTICE</span>';
+    } else {
+      sessionIcon = '📊';
+      sessionBadge = '<span style="background:var(--muted);color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">SESSION</span>';
+    }
+    
+    // Badge pour le mode de jeu
+    const gameModeBadge = session.gameMode === 'Multijoueur' 
+      ? '<span style="background:#8b5cf6;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;">🌐 MULTI</span>'
+      : '<span style="background:#64748b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;">👤 SOLO</span>';
+    
+    cards.push(`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--panel);border-radius:8px;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="font-size:20px;">${sessionIcon}</div>
+        <div>
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px;">${session.event}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${session.track} • ${session.date}</div>
+          <div>${sessionBadge}${gameModeBadge}</div>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-weight:600;color:var(--ok);">${fmtTime(session.bestLap)}</div>
+        <div style="font-size:12px;color:var(--muted);">P${session.position || '?'}</div>
+      </div>
+    </div>`);
+  }
+  return cards.join('');
+}
+
 // Fonction pour calculer les statistiques par circuit
 function calculateTrackStats(driverName) {
   const trackStats = {};
@@ -403,7 +500,8 @@ function calculateTrackStats(driverName) {
           allValidLaps: [],
           topSpeed: 0,
           lastSession: new Date(0),
-          totalLaps: 0
+          totalLaps: 0,
+          classStats: {} // Stats par classe
         };
       }
       
@@ -416,6 +514,7 @@ function calculateTrackStats(driverName) {
         trackData.lastSession = sessionDate;
       }
       
+      // Stats globales (toutes classes confondues)
       // Meilleur tour
       if (isFinite(myDriver.bestLapSec) && myDriver.bestLapSec > 0 && myDriver.bestLapSec < trackData.bestLap) {
         trackData.bestLap = myDriver.bestLapSec;
@@ -437,6 +536,44 @@ function calculateTrackStats(driverName) {
         trackData.totalLaps += myDriver.laps.length;
       }
       
+      // Stats par classe de voiture
+      const carClass = myDriver.carClass || 'Unknown';
+      if (carClass !== 'Unknown') {
+        // Initialiser les stats de cette classe si nécessaire
+        if (!trackData.classStats[carClass]) {
+          trackData.classStats[carClass] = {
+            sessions: 0,
+            bestLap: Infinity,
+            avgLap: 0,
+            allValidLaps: [],
+            topSpeed: 0,
+            totalLaps: 0
+          };
+        }
+        
+        const classData = trackData.classStats[carClass];
+        classData.sessions++;
+        
+        // Meilleur tour pour cette classe
+        if (isFinite(myDriver.bestLapSec) && myDriver.bestLapSec > 0 && myDriver.bestLapSec < classData.bestLap) {
+          classData.bestLap = myDriver.bestLapSec;
+        }
+        
+        // Vitesse de pointe pour cette classe
+        if (isFinite(myDriver.topSpeedMax) && myDriver.topSpeedMax > classData.topSpeed) {
+          classData.topSpeed = myDriver.topSpeedMax;
+        }
+        
+        // Tours valides pour cette classe
+        if (myDriver.laps) {
+          const validLaps = myDriver.laps
+            .map(l => l.timeSec)
+            .filter(t => isFinite(t) && t > 0);
+          classData.allValidLaps.push(...validLaps);
+          classData.totalLaps += myDriver.laps.length;
+        }
+      }
+      
     } catch (e) {
       console.warn('Erreur lors du traitement du fichier pour les stats circuit:', file.filePath, e);
     }
@@ -444,18 +581,36 @@ function calculateTrackStats(driverName) {
   
   // Calculer la moyenne globale pour chaque circuit
   for (const track of Object.values(trackStats)) {
+    // Moyenne globale
     if (track.allValidLaps.length > 0) {
       track.avgLap = track.allValidLaps.reduce((a, b) => a + b, 0) / track.allValidLaps.length;
     } else {
       track.avgLap = NaN;
     }
     
-    // Nettoyer les données temporaires
+    // Nettoyer les données temporaires globales
     delete track.allValidLaps;
     
     // Si pas de meilleur tour trouvé, mettre NaN
     if (track.bestLap === Infinity) {
       track.bestLap = NaN;
+    }
+    
+    // Calculer les moyennes par classe
+    for (const classData of Object.values(track.classStats)) {
+      if (classData.allValidLaps.length > 0) {
+        classData.avgLap = classData.allValidLaps.reduce((a, b) => a + b, 0) / classData.allValidLaps.length;
+      } else {
+        classData.avgLap = NaN;
+      }
+      
+      // Nettoyer les données temporaires de classe
+      delete classData.allValidLaps;
+      
+      // Si pas de meilleur tour trouvé, mettre NaN
+      if (classData.bestLap === Infinity) {
+        classData.bestLap = NaN;
+      }
     }
   }
   
@@ -801,6 +956,9 @@ if (btnOpenFolder) btnOpenFolder.addEventListener('click', async () => {
   if (Array.isArray(res.files)) {
     lastScannedFiles = res.files;
     
+    // Invalider le cache lors du changement de données
+    invalidateCache();
+    
     // Trier les fichiers du plus récent au plus ancien
     const sortedFiles = res.files.slice().sort((a, b) => {
       // Trier par DateTime du XML si disponible, sinon par date de modification du fichier
@@ -897,6 +1055,9 @@ async function scanConfiguredFolder() {
   if (Array.isArray(res.files)) {
     lastScannedFiles = res.files;
     
+    // Invalider le cache lors du changement de données
+    invalidateCache();
+    
     // Trier les fichiers du plus récent au plus ancien
     const sortedFiles = res.files.slice().sort((a, b) => {
       // Trier par DateTime du XML si disponible, sinon par date de modification du fichier
@@ -937,6 +1098,12 @@ async function scanConfiguredFolder() {
       });
     });
   }
+}
+
+// Fonction pour invalider le cache
+function invalidateCache() {
+  cachedStats = null;
+  cachedTrackStats = null;
 }
 
 // Optionnel: scanner automatiquement au démarrage si un dossier est configuré
