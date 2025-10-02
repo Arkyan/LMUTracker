@@ -242,6 +242,19 @@ input[type=text]:focus,select:focus{
   background:rgba(96,165,250,0.05);
 }
 
+/* Séparateurs de classes */
+.table .class-separator td {
+  border-bottom: 2px solid rgba(255,255,255,0.2) !important;
+  border-top: 2px solid rgba(255,255,255,0.2) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  letter-spacing: 1px;
+  position: relative;
+}
+
+.table .class-separator:hover {
+  background: none !important;
+}
+
 /* Spinner moderne */
 .spinner{
   width:20px;

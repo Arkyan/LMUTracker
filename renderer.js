@@ -1,6 +1,7 @@
 // Mini routeur: toggle entre vues
 const views = {
-  results: document.getElementById('view-results'),
+  profile: document.getElementById('view-profile'),
+  history: document.getElementById('view-history'),
   settings: document.getElementById('view-settings')
 };
 const navButtons = document.querySelectorAll('.nav-btn');
@@ -9,6 +10,15 @@ function switchView(view) {
   Object.values(views).forEach(v => v.classList.remove('active'));
   views[view]?.classList.add('active');
   navButtons.forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  
+  // Actions spécifiques par vue
+  if (view === 'profile') {
+    generateProfileContent();
+  } else if (view === 'history') {
+    if (!lastScannedFiles) {
+      scanConfiguredFolder();
+    }
+  }
 }
 
 // Charger et afficher le chemin courant
@@ -37,6 +47,258 @@ function loadSavedDriverName() {
 // Fonction utilitaire pour récupérer le nom de pilote configuré
 function getConfiguredDriverName() {
   return localStorage.getItem('lmu.driverName') || '';
+}
+
+// Fonction pour générer le contenu du profil pilote
+function generateProfileContent() {
+  const container = document.getElementById('profileContent');
+  const driverName = getConfiguredDriverName();
+  
+  if (!driverName) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:40px;color:var(--muted);">
+        <div style="font-size:48px;margin-bottom:16px;">🏁</div>
+        <h3 style="margin-bottom:12px;color:var(--text);">Aucun nom de pilote configuré</h3>
+        <p style="margin-bottom:20px;">Veuillez configurer votre nom de pilote dans les paramètres pour voir vos statistiques.</p>
+        <button class="btn primary" onclick="switchView('settings')">⚙️ Aller aux paramètres</button>
+      </div>
+    `;
+    return;
+  }
+  
+  // Calculer les statistiques depuis les sessions scannées
+  const stats = calculateDriverStats(driverName);
+  
+  let html = `
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;margin-bottom:24px;">
+      <!-- Carte de bienvenue -->
+      <div class="card" style="background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(167,139,250,0.1));border:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+          <div style="width:64px;height:64px;background:linear-gradient(135deg,var(--brand),var(--accent));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;">🏁</div>
+          <div>
+            <h2 style="margin:0;font-size:24px;color:var(--text);">Bonjour, ${driverName} !</h2>
+            <p style="margin:4px 0 0 0;color:var(--muted);">Bienvenue dans votre tableau de bord LMU</p>
+          </div>
+        </div>
+        ${stats.totalSessions > 0 ? `
+          <div class="row" style="gap:16px;flex-wrap:wrap;">
+            <div class="chip" style="background:var(--ok);color:#000;font-weight:600;">🏆 ${stats.totalRaces} course(s)</div>
+            <div class="chip" style="background:var(--accent);color:#fff;font-weight:600;">🏃 ${stats.totalSessions} session(s)</div>
+            <div class="chip" style="background:#fbbf24;color:#000;font-weight:600;">🥇 ${stats.totalWins} victoire(s)</div>
+            <div class="chip" style="background:#a855f7;color:#fff;font-weight:600;">🏅 ${stats.totalPodiums} podium(s)</div>
+          </div>
+        ` : ''}
+      </div>
+      
+      <!-- Statistiques rapides -->
+      <div class="card">
+        <h3 style="margin:0 0 16px 0;color:var(--accent);">📊 Statistiques</h3>
+        <div style="display:grid;gap:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:var(--muted);">Sessions totales</span>
+            <strong style="color:var(--text);">${stats.totalSessions}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:var(--muted);">Courses</span>
+            <strong style="color:var(--text);">${stats.totalRaces}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:var(--muted);">Victoires totales</span>
+            <strong style="color:#fbbf24;">${stats.totalWins}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:var(--muted);">Podiums totaux</span>
+            <strong style="color:#a855f7;">${stats.totalPodiums}</strong>
+          </div>
+        </div>
+        
+        ${Object.keys(stats.podiumsByClass).length > 0 ? `
+          <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
+            <h4 style="margin:0 0 12px 0;color:var(--accent);font-size:14px;">🏁 Par classe</h4>
+            <div style="display:grid;gap:8px;">
+              ${Object.entries(stats.podiumsByClass).map(([className, data]) => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--panel-light);border-radius:6px;">
+                  <span style="color:var(--text);font-weight:500;">${className}</span>
+                  <div style="display:flex;gap:8px;">
+                    <span style="color:#fbbf24;font-size:12px;">🥇 ${data.wins}</span>
+                    <span style="color:#a855f7;font-size:12px;">🏅 ${data.podiums}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+  
+  if (stats.recentSessions.length > 0) {
+    html += `
+      <div class="card">
+        <h3 style="margin:0 0 16px 0;color:var(--accent);">📅 Sessions récentes</h3>
+        <div style="display:grid;gap:12px;">
+          ${stats.recentSessions.slice(0, 5).map(session => {
+            // Déterminer le type et l'icône de session
+            const sessionType = session.session.toLowerCase();
+            let sessionIcon = '🏎️';
+            let sessionBadge = '';
+            
+            if (sessionType.includes('race')) {
+              sessionIcon = '🏁';
+              sessionBadge = '<span style="background:#ef4444;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">COURSE</span>';
+            } else if (sessionType.includes('qual')) {
+              sessionIcon = '⏱️';
+              sessionBadge = '<span style="background:#f97316;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">QUALIF</span>';
+            } else if (sessionType.includes('practice') || sessionType.includes('practise')) {
+              sessionIcon = '🏃';
+              sessionBadge = '<span style="background:#22c55e;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">PRACTICE</span>';
+            } else {
+              sessionIcon = '📊';
+              sessionBadge = '<span style="background:var(--muted);color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">SESSION</span>';
+            }
+            
+            // Badge pour le mode de jeu
+            const gameModeBadge = session.gameMode === 'Multijoueur' 
+              ? '<span style="background:#8b5cf6;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;">🌐 MULTI</span>'
+              : '<span style="background:#64748b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;">👤 SOLO</span>';
+            
+            return `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--panel);border-radius:8px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="font-size:20px;">${sessionIcon}</div>
+                <div>
+                  <div style="font-weight:600;color:var(--text);margin-bottom:4px;">${session.event}</div>
+                  <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${session.track} • ${session.date}</div>
+                  <div>${sessionBadge}${gameModeBadge}</div>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-weight:600;color:var(--ok);">${fmtTime(session.bestLap)}</div>
+                <div style="font-size:12px;color:var(--muted);">P${session.position || '?'}</div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        ${stats.recentSessions.length > 5 ? `
+          <div style="margin-top:16px;text-align:center;">
+            <button class="btn" onclick="switchView('history')">📊 Voir tout l'historique</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  } else {
+    html += `
+      <div class="card" style="text-align:center;padding:40px;">
+        <div style="font-size:48px;margin-bottom:16px;opacity:0.6;">📊</div>
+        <h3 style="margin-bottom:12px;color:var(--text);">Aucune session trouvée</h3>
+        <p style="margin-bottom:20px;color:var(--muted);">Configurez votre dossier de résultats pour voir vos statistiques.</p>
+        <button class="btn primary" onclick="switchView('settings')">⚙️ Configurer le dossier</button>
+      </div>
+    `;
+  }
+  
+  container.innerHTML = html;
+}
+
+// Fonction pour calculer les statistiques du pilote
+function calculateDriverStats(driverName) {
+  const stats = {
+    totalSessions: 0,
+    totalRaces: 0,
+    bestLap: Infinity,
+    topSpeed: 0,
+    recentSessions: [],
+    podiumsByClass: {}, // {className: {wins: 0, podiums: 0}}
+    totalWins: 0,
+    totalPodiums: 0
+  };
+  
+  if (!lastScannedFiles) return stats;
+  
+  for (const file of lastScannedFiles) {
+    if (file.error) continue;
+    
+    const session = extractSession(file.parsed);
+    if (!session) continue;
+    
+    // Chercher le pilote dans cette session (nom exact ou dans l'équipe)
+    const driver = session.drivers.find(d => 
+      d.name === driverName || 
+      (d.allDrivers && d.allDrivers.includes(driverName))
+    );
+    if (!driver) continue;
+    
+    stats.totalSessions++;
+    
+    // Détecter si c'est une course (présence de balise <Race> dans le XML)
+    const rr = getRaceResultsRoot(file.parsed);
+    if (rr && rr.Race) {
+      stats.totalRaces++;
+    }
+    
+    // Calculer podiums et victoires par classe (uniquement pour les courses)
+    if (rr && rr.Race && isFinite(driver.classPosition) && driver.classPosition > 0) {
+      const carClass = driver.carClass || 'Unknown';
+      
+      // Initialiser la classe si nécessaire
+      if (!stats.podiumsByClass[carClass]) {
+        stats.podiumsByClass[carClass] = { wins: 0, podiums: 0 };
+      }
+      
+      // Podium (P1, P2, P3)
+      if (driver.classPosition <= 3) {
+        stats.podiumsByClass[carClass].podiums++;
+        stats.totalPodiums++;
+        
+        // Victoire (P1)
+        if (driver.classPosition === 1) {
+          stats.podiumsByClass[carClass].wins++;
+          stats.totalWins++;
+        }
+      }
+    }
+    
+    // Meilleur tour
+    if (isFinite(driver.bestLapSec) && driver.bestLapSec < stats.bestLap) {
+      stats.bestLap = driver.bestLapSec;
+    }
+    
+    // Vitesse max
+    if (isFinite(driver.topSpeedMax) && driver.topSpeedMax > stats.topSpeed) {
+      stats.topSpeed = driver.topSpeedMax;
+    }
+    
+    // Ajouter à l'historique des sessions récentes
+    const timeString = formatDateTime(rr, file.mtimeIso ? new Date(file.mtimeIso) : null);
+    const timestamp = rr.DateTime ? parseInt(rr.DateTime) * 1000 : (file.mtimeIso ? new Date(file.mtimeIso).getTime() : 0);
+    
+    // Détecter le mode de jeu (Solo/Multijoueur)
+    const setting = rr.Setting || '';
+    const isMultiplayer = setting.toLowerCase().includes('multiplayer');
+    const gameMode = isMultiplayer ? 'Multijoueur' : 'Solo';
+    
+    stats.recentSessions.push({
+      event: session.meta.event || 'Session',
+      track: session.meta.track || '',
+      date: timeString,
+      timestamp: timestamp,
+      bestLap: driver.bestLapSec,
+      position: driver.position,
+      session: session.meta.session,
+      gameMode: gameMode
+    });
+  }
+  
+  // Trier les sessions par timestamp (plus récentes en premier)
+  stats.recentSessions.sort((a, b) => {
+    // Utiliser le timestamp si disponible, sinon fallback sur la date string
+    if (a.timestamp && b.timestamp) {
+      return b.timestamp - a.timestamp;
+    }
+    return b.date.localeCompare(a.date);
+  });
+  
+  return stats;
 }
 try { 
   loadSavedFolder(); 
@@ -159,7 +421,82 @@ function pickSession(rr) {
   const [name, node] = entries[0];
   return { name, node };
 }
+
+// Fonction pour extraire les changements de pilotes depuis le Stream et les Swaps
+function extractDriverChanges(sessionNode) {
+  const driverChangesByVehicle = {};
+  const stream = sessionNode.Stream;
+  
+  // Traiter les DriverChange depuis le Stream
+  if (stream && stream.DriverChange) {
+    const changes = arrayify(stream.DriverChange);
+    changes.forEach(change => {
+      const changeText = change['#text'] || change;
+      if (typeof changeText === 'string') {
+        // Parser: Slot=X Vehicle="Team #XX:YY" Old="Pilote1" New="Pilote2"
+        const slotMatch = changeText.match(/Slot=(\d+)/);
+        const vehicleMatch = changeText.match(/Vehicle="([^"]+)"/);
+        const oldMatch = changeText.match(/Old="([^"]+)"/);
+        const newMatch = changeText.match(/New="([^"]+)"/);
+        
+        if (slotMatch && vehicleMatch && oldMatch && newMatch) {
+          const vehicle = vehicleMatch[1];
+          const oldDriver = oldMatch[1];
+          const newDriver = newMatch[1];
+          
+          if (!driverChangesByVehicle[vehicle]) {
+            driverChangesByVehicle[vehicle] = new Set([oldDriver]);
+          }
+          
+          // Ajouter l'ancien pilote (au cas où il ne serait pas encore dans la liste)
+          driverChangesByVehicle[vehicle].add(oldDriver);
+          // Ajouter le nouveau pilote
+          driverChangesByVehicle[vehicle].add(newDriver);
+        }
+      }
+    });
+  }
+  
+  // Traiter les Swaps directement dans les données de pilotes
+  if (sessionNode.Driver) {
+    const drivers = arrayify(sessionNode.Driver);
+    drivers.forEach(driver => {
+      const vehicleName = driver.VehName;
+      if (vehicleName && driver.Swap) {
+        const swaps = arrayify(driver.Swap);
+        
+        if (!driverChangesByVehicle[vehicleName]) {
+          driverChangesByVehicle[vehicleName] = new Set();
+        }
+        
+        // Ajouter le pilote principal
+        if (driver.Name) {
+          driverChangesByVehicle[vehicleName].add(driver.Name);
+        }
+        
+        // Ajouter tous les pilotes des swaps
+        swaps.forEach(swap => {
+          const swapText = swap['#text'] || swap;
+          if (typeof swapText === 'string') {
+            driverChangesByVehicle[vehicleName].add(swapText);
+          }
+        });
+      }
+    });
+  }
+  
+  // Convertir les Sets en arrays
+  const result = {};
+  for (const [vehicle, driversSet] of Object.entries(driverChangesByVehicle)) {
+    result[vehicle] = Array.from(driversSet);
+  }
+  
+  return result;
+}
+
 function extractDrivers(sessionNode) {
+  const driverChanges = extractDriverChanges(sessionNode);
+  
   const drivers = arrayify(sessionNode.Driver).map((d, idx) => {
     const lapsRaw = arrayify(d.Lap);
     const laps = lapsRaw.map((lap) => {
@@ -181,14 +518,30 @@ function extractDrivers(sessionNode) {
 
     const validLapTimes = laps.map(l => l.timeSec).filter(t => isFinite(t) && t > 0);
     const bestLapSec = isFinite(toNumber(d.BestLapTime)) ? toNumber(d.BestLapTime) : Math.min(...validLapTimes);
+    
+    // Moyenne de tous les tours qui ont des temps valides (pas "---.----")
     const avgLapSec = validLapTimes.length ? (validLapTimes.reduce((a,b) => a+b, 0) / validLapTimes.length) : NaN;
+    
     const validTopSpeeds = laps.map(l => l.topSpeed).filter(x => isFinite(x) && x > 0);
     const maxTop = validTopSpeeds.length > 0 ? Math.max(...validTopSpeeds) : NaN;
+
+    // Chercher les pilotes supplémentaires via les DriverChanges
+    const currentDriverName = d.Name || `Driver ${idx+1}`;
+    let allDrivers = [currentDriverName];
+    
+    // Trouver la voiture correspondante dans les changements de pilotes
+    const vehicleName = d.VehName || '';
+    if (driverChanges[vehicleName]) {
+      // Utiliser tous les pilotes de cette voiture
+      allDrivers = [...driverChanges[vehicleName]];
+    }
 
     return {
       position: toNumber(d.Position),
       classPosition: toNumber(d.ClassPosition),
-      name: d.Name || `Driver ${idx+1}`,
+      name: currentDriverName,
+      allDrivers: allDrivers, // Tous les pilotes de la voiture
+      displayName: allDrivers.length > 1 ? allDrivers.join(' / ') : currentDriverName,
       car: d.CarType || d.VehName || '',
       carClass: d.CarClass || '',
       number: d.CarNumber || '',
@@ -201,9 +554,35 @@ function extractDrivers(sessionNode) {
       laps
     };
   });
-  // Trier par position quand disponible, sinon par meilleur tour croissant
+  // Trier par classe puis par position de classe
   drivers.sort((a,b) => {
-    if (isFinite(a.position) && isFinite(b.position)) return a.position - b.position;
+    // Fonction pour obtenir la priorité de classe
+    const getClassPriority = (carClass) => {
+      const classPriorities = {
+        'Hyper': 1,
+        'LMP2_ELMS': 2,
+        'LMP2': 3,
+        'LMP3': 4,
+        'GT3': 5,
+        'GTE': 6,
+      };
+      return classPriorities[carClass] || 999; // Classes inconnues à la fin
+    };
+    
+    const classPriorityA = getClassPriority(a.carClass);
+    const classPriorityB = getClassPriority(b.carClass);
+    
+    // Si différentes classes, trier par priorité de classe
+    if (classPriorityA !== classPriorityB) {
+      return classPriorityA - classPriorityB;
+    }
+    
+    // Même classe : trier par position de classe
+    if (isFinite(a.classPosition) && isFinite(b.classPosition)) {
+      return a.classPosition - b.classPosition;
+    }
+    
+    // Fallback : trier par meilleur tour
     return a.bestLapSec - b.bestLapSec;
   });
   return drivers;
@@ -259,8 +638,21 @@ if (btnOpenFolder) btnOpenFolder.addEventListener('click', async () => {
   if (Array.isArray(res.files)) {
     lastScannedFiles = res.files;
     
+    // Trier les fichiers du plus récent au plus ancien
+    const sortedFiles = res.files.slice().sort((a, b) => {
+      // Trier par DateTime du XML si disponible, sinon par date de modification du fichier
+      const getDateTime = (file) => {
+        const rr = file.parsed?.rFactorXML?.RaceResults || file.parsed?.RaceResults;
+        if (rr && rr.DateTime) {
+          return parseInt(rr.DateTime) * 1000; // Convertir en millisecondes
+        }
+        return file.mtimeIso ? new Date(file.mtimeIso).getTime() : 0;
+      };
+      return getDateTime(b) - getDateTime(a); // Plus récent en premier
+    });
+    
     // Cards avec métadonnées XML
-    const cards = res.files.map(generateSessionCard).join('');
+    const cards = sortedFiles.map(generateSessionCard).join('');
     
     container.innerHTML = `<h2>Sessions trouvées</h2>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:16px;">
@@ -321,7 +713,9 @@ if (btnSaveSettings) {
       btnSaveSettings.style.background = '';
     }, 2000);
     
-    switchView('results');
+    // Mettre à jour les statistiques du profil avec le nouveau nom
+    generateProfileContent();
+    switchView('profile');
     scanConfiguredFolder();
   });
 }
@@ -340,8 +734,21 @@ async function scanConfiguredFolder() {
   if (Array.isArray(res.files)) {
     lastScannedFiles = res.files;
     
+    // Trier les fichiers du plus récent au plus ancien
+    const sortedFiles = res.files.slice().sort((a, b) => {
+      // Trier par DateTime du XML si disponible, sinon par date de modification du fichier
+      const getDateTime = (file) => {
+        const rr = file.parsed?.rFactorXML?.RaceResults || file.parsed?.RaceResults;
+        if (rr && rr.DateTime) {
+          return parseInt(rr.DateTime) * 1000; // Convertir en millisecondes
+        }
+        return file.mtimeIso ? new Date(file.mtimeIso).getTime() : 0;
+      };
+      return getDateTime(b) - getDateTime(a); // Plus récent en premier
+    });
+    
     // Cards avec métadonnées XML
-    const cards = res.files.map(generateSessionCard).join('');
+    const cards = sortedFiles.map(generateSessionCard).join('');
     
     container.innerHTML = `<h2>Sessions trouvées</h2>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:16px;">

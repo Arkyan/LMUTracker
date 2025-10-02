@@ -16,14 +16,26 @@
       <span class="brand-text">LMU Tracker</span>
     </div>
     <nav class="nav">
-      <button class="nav-btn active" data-view="results">📊 Résultats</button>
+      <button class="nav-btn active" data-view="profile">👨‍💼 Profil</button>
+      <button class="nav-btn" data-view="history">📊 Historique</button>
       <button class="nav-btn" data-view="settings">⚙️ Settings</button>
     </nav>
   </header>
   <main class="app-main">
-    <section id="view-results" class="view active">
+    <section id="view-profile" class="view active">
+      <div class="card">
+        <h2 style="margin-bottom:20px;font-size:24px;background:linear-gradient(135deg,var(--brand),var(--accent));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">👨‍💼 Profil Pilote</h2>
+        
+        <div id="profileContent">
+          <!-- Le contenu du profil sera généré par JavaScript -->
+        </div>
+      </div>
+    </section>
+    
+    <section id="view-history" class="view">
       <div id="results" class="card"></div>
     </section>
+    
     <section id="view-settings" class="view">
       <div class="card">
         <h2 style="margin-bottom:16px;font-size:22px;background:linear-gradient(135deg,var(--brand),var(--accent));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">⚙️ Paramètres</h2>
