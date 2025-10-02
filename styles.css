@@ -1,0 +1,306 @@
+:root{
+  --bg-dark:#0a0e14;
+  --bg-gradient:linear-gradient(135deg,#0f1419 0%,#1a1f2e 100%);
+  --panel:#1a1f2e;
+  --panel-light:#242938;
+  --glass:rgba(26,31,46,0.7);
+  --muted:#8b92a8;
+  --text:#e8edf4;
+  --brand:#a78bfa;
+  --accent:#60a5fa;
+  --accent-glow:rgba(96,165,250,0.3);
+  --ok:#34d399;
+  --warn:#fbbf24;
+  --err:#f87171;
+  --border:#2d3548;
+  --shadow-sm:0 2px 8px rgba(0,0,0,0.15);
+  --shadow-md:0 4px 16px rgba(0,0,0,0.25);
+  --shadow-lg:0 8px 32px rgba(0,0,0,0.35);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow-x:hidden}
+body{
+  margin:0;
+  background:var(--bg-dark);
+  background:var(--bg-gradient);
+  background-attachment:fixed;
+  color:var(--text);
+  font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;
+  font-size:14px;
+  line-height:1.6;
+}
+
+/* Header modernisé */
+.app-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:16px 24px;
+  background:rgba(26,31,46,0.85);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+  box-shadow:var(--shadow-sm);
+  position:sticky;
+  top:0;
+  z-index:100;
+}
+.brand{
+  font-weight:700;
+  font-size:20px;
+  background:linear-gradient(135deg,var(--brand) 0%,var(--accent) 100%);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+  letter-spacing:-0.5px;
+}
+
+/* Navigation pills moderne */
+.nav{display:flex;gap:8px}
+.nav-btn{
+  background:transparent;
+  border:1px solid var(--border);
+  color:var(--muted);
+  padding:10px 16px;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:500;
+  transition:all 0.2s cubic-bezier(0.4,0,0.2,1);
+  position:relative;
+  overflow:hidden;
+}
+.nav-btn::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  background:linear-gradient(135deg,var(--accent),var(--brand));
+  opacity:0;
+  transition:opacity 0.3s;
+}
+.nav-btn:hover{
+  border-color:var(--accent);
+  color:var(--accent);
+  transform:translateY(-1px);
+  box-shadow:0 4px 12px var(--accent-glow);
+}
+.nav-btn.active{
+  background:linear-gradient(135deg,var(--accent),var(--brand));
+  border-color:transparent;
+  color:#fff;
+  box-shadow:0 4px 12px var(--accent-glow);
+}
+
+/* Layout principal */
+.app-main{
+  max-width:1600px;
+  margin:24px auto;
+  padding:0 24px;
+  animation:fadeIn 0.4s ease-out;
+}
+@keyframes fadeIn{
+  from{opacity:0;transform:translateY(10px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.view{display:none}
+.view.active{display:block}
+
+/* Toolbar moderne */
+.toolbar{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  margin-bottom:16px;
+  flex-wrap:wrap;
+}
+.muted{color:var(--muted);font-size:13px}
+
+/* Boutons 3D modernes */
+.btn{
+  background:var(--panel-light);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:10px 18px;
+  border-radius:10px;
+  cursor:pointer;
+  font-weight:500;
+  transition:all 0.2s cubic-bezier(0.4,0,0.2,1);
+  box-shadow:var(--shadow-sm);
+  position:relative;
+  overflow:hidden;
+}
+.btn::before{
+  content:'';
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:0;
+  height:0;
+  border-radius:50%;
+  background:rgba(255,255,255,0.1);
+  transform:translate(-50%,-50%);
+  transition:width 0.4s,height 0.4s;
+}
+.btn:hover::before{width:300px;height:300px}
+.btn:hover{
+  border-color:var(--accent);
+  color:var(--accent);
+  transform:translateY(-2px);
+  box-shadow:var(--shadow-md);
+}
+.btn:active{transform:translateY(0)}
+.btn.primary{
+  background:linear-gradient(135deg,var(--accent),var(--brand));
+  border:none;
+  color:#fff;
+  box-shadow:0 4px 12px var(--accent-glow);
+}
+.btn.primary:hover{
+  transform:translateY(-2px) scale(1.02);
+  box-shadow:0 6px 20px var(--accent-glow);
+}
+
+/* Cartes glass morphism */
+.card{
+  background:var(--glass);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:20px;
+  box-shadow:var(--shadow-md);
+  transition:all 0.3s ease;
+}
+.card:hover{
+  transform:translateY(-2px);
+  box-shadow:var(--shadow-lg);
+  border-color:var(--accent);
+}
+
+/* Inputs modernes */
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+input[type=text],select{
+  flex:1;
+  min-width:200px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:10px 14px;
+  border-radius:10px;
+  transition:all 0.2s;
+  font-size:14px;
+}
+input[type=text]:focus,select:focus{
+  outline:none;
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-glow);
+}
+
+/* Tables modernes */
+.table{
+  width:100%;
+  border-collapse:collapse;
+  overflow:auto;
+  display:block;
+  background:var(--panel);
+  border-radius:12px;
+  box-shadow:var(--shadow-sm);
+}
+.table thead{
+  position:sticky;
+  top:0;
+  background:var(--panel-light);
+  z-index:10;
+}
+.table th,.table td{
+  border-bottom:1px solid var(--border);
+  padding:12px 16px;
+  text-align:left;
+}
+.table th{
+  color:var(--muted);
+  font-weight:600;
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
+.table tbody tr{
+  transition:background 0.2s;
+}
+.table tbody tr:hover{
+  background:rgba(96,165,250,0.05);
+}
+
+/* Spinner moderne */
+.spinner{
+  width:20px;
+  height:20px;
+  border:3px solid var(--border);
+  border-top-color:var(--accent);
+  border-radius:50%;
+  animation:spin 0.8s linear infinite;
+  display:inline-block;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Code blocks */
+pre{
+  white-space:pre-wrap;
+  word-break:break-word;
+  background:var(--panel);
+  border:1px solid var(--border);
+  padding:16px;
+  border-radius:12px;
+  font-size:13px;
+  box-shadow:var(--shadow-sm);
+}
+
+/* Sections repliables */
+.section{margin-bottom:20px}
+.section .section-header{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  cursor:pointer;
+  color:var(--accent);
+  font-weight:500;
+  padding:8px;
+  border-radius:8px;
+  transition:all 0.2s;
+}
+.section .section-header:hover{
+  background:rgba(96,165,250,0.1);
+  transform:translateX(4px);
+}
+.section .section-content{margin-top:12px}
+
+/* Badges & chips */
+.chip{
+  display:inline-block;
+  padding:4px 12px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  color:var(--muted);
+  font-size:12px;
+  background:var(--panel);
+  box-shadow:var(--shadow-sm);
+}
+.badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:28px;
+  height:28px;
+  padding:0 10px;
+  background:linear-gradient(135deg,var(--accent),var(--brand));
+  color:#fff;
+  font-weight:600;
+  font-size:13px;
+  border-radius:8px;
+  box-shadow:0 2px 8px var(--accent-glow);
+}
+
+/* Scrollbar moderne */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:var(--panel)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}

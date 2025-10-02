@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LMU Tracker</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">🏁 LMU Tracker</div>
+    <nav class="nav">
+      <button class="nav-btn active" data-view="results">📊 Résultats</button>
+      <button class="nav-btn" data-view="settings">⚙️ Settings</button>
+    </nav>
+  </header>
+  <main class="app-main">
+    <section id="view-results" class="view active">
+      <div id="results" class="card"></div>
+    </section>
+    <section id="view-settings" class="view">
+      <div class="card">
+        <h2 style="margin-bottom:16px;font-size:22px;background:linear-gradient(135deg,var(--brand),var(--accent));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">⚙️ Paramètres</h2>
+        <div class="form-row" style="margin-bottom:20px;">
+          <label style="display:block;margin-bottom:8px;font-weight:500;color:var(--text);">📁 Dossier des résultats (.xml)</label>
+          <div class="row">
+            <input type="text" id="resultsFolder" placeholder="Sélectionner un dossier" readonly />
+            <button id="btnSelectFolder" class="btn">🔍 Parcourir…</button>
+          </div>
+          <small class="muted" style="display:block;margin-top:8px;">Ce dossier sera utilisé par défaut pour le scan automatique.</small>
+        </div>
+        <div class="form-row">
+          <button id="btnSaveSettings" class="btn primary">💾 Enregistrer</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
