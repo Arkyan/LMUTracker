@@ -35,9 +35,7 @@ function createWindow() {
     }
   });
 
-  // Supprimer complètement la barre de menus
-  win.setMenuBarVisibility(false);
-  win.setMenu(null);
+
 
   win.loadFile('index.html');
   win.maximize();
