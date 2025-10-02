@@ -68,6 +68,7 @@ function generateProfileContent() {
   
   // Calculer les statistiques depuis les sessions scannées
   const stats = calculateDriverStats(driverName);
+  const trackStats = calculateTrackStats(driverName);
   
   let html = `
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;margin-bottom:24px;">
@@ -131,6 +132,70 @@ function generateProfileContent() {
       </div>
     </div>
   `;
+  
+  // Section Performance par Circuit
+  const trackStatsEntries = Object.values(trackStats);
+  console.log('trackStats:', trackStats);
+  console.log('trackStatsEntries.length:', trackStatsEntries.length);
+  console.log('lastScannedFiles:', lastScannedFiles);
+  
+  if (trackStatsEntries.length > 0) {
+    // Trier par nombre de sessions décroissant
+    trackStatsEntries.sort((a, b) => b.sessions - a.sessions);
+    
+    html += `
+      <div class="card" style="margin-bottom:24px;">
+        <h3 style="margin:0 0 16px 0;color:var(--accent);">🏁 Performance par Circuit</h3>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;">
+          ${trackStatsEntries.map(track => {
+            const bestLapText = isFinite(track.bestLap) ? fmtTime(track.bestLap) : '—';
+            const avgLapText = isFinite(track.avgLap) ? fmtTime(track.avgLap) : '—';
+            const topSpeedText = track.topSpeed > 0 ? `${track.topSpeed.toFixed(1)} km/h` : '—';
+            const lastSessionText = track.lastSession > new Date(0) ? 
+              track.lastSession.toLocaleDateString('fr-FR') : '—';
+            
+            return `
+            <div style="padding:16px;background:var(--panel);border-radius:8px;border:2px solid var(--border);border-left:4px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+              <div style="margin-bottom:12px;">
+                <div style="font-weight:600;color:var(--text);margin-bottom:6px;">🏎️ ${track.trackName}</div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+                  <span style="font-size:12px;color:var(--muted);">📊 ${track.sessions} session(s)</span>
+                  <span style="font-size:12px;color:var(--muted);">🔄 ${track.totalLaps || 0} tour(s)</span>
+                  <span style="font-size:12px;color:var(--muted);">📅 ${lastSessionText}</span>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center;">
+                <div>
+                  <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">⏱️ MEILLEUR</div>
+                  <div style="font-weight:600;color:var(--ok);font-size:14px;">${bestLapText}</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">📊 MOYENNE</div>
+                  <div style="font-weight:600;color:var(--text);font-size:14px;">${avgLapText}</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">🚀 V.MAX</div>
+                  <div style="font-weight:600;color:var(--accent);font-size:14px;">${topSpeedText}</div>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  } else {
+    // Section de debug temporaire
+    html += `
+      <div class="card" style="margin-bottom:24px;">
+        <h3 style="margin:0 0 16px 0;color:var(--accent);">🏁 Performance par Circuit</h3>
+        <div style="padding:16px;background:var(--panel);border-radius:8px;text-align:center;color:var(--muted);">
+          <p>Aucune donnée de circuit trouvée.</p>
+          <p style="font-size:12px;">Debug: trackStats = ${JSON.stringify(trackStats)}</p>
+          <p style="font-size:12px;">lastScannedFiles = ${lastScannedFiles ? lastScannedFiles.length + ' fichiers' : 'null'}</p>
+        </div>
+      </div>
+    `;
+  }
   
   if (stats.recentSessions.length > 0) {
     html += `
@@ -300,6 +365,104 @@ function calculateDriverStats(driverName) {
   
   return stats;
 }
+
+// Fonction pour calculer les statistiques par circuit
+function calculateTrackStats(driverName) {
+  const trackStats = {};
+  
+  if (!lastScannedFiles) return trackStats;
+  
+  for (const file of lastScannedFiles) {
+    if (file.error) continue;
+    
+    try {
+      const rr = getRaceResultsRoot(file.parsed);
+      if (!rr) continue;
+      
+      const trackCourse = rr.TrackCourse || rr.TrackVenue || 'Circuit inconnu';
+      
+      // Utiliser extractSession pour simplifier et réutiliser la logique existante
+      const session = extractSession(file.parsed);
+      if (!session) continue;
+      
+      // Chercher notre pilote dans cette session
+      const myDriver = session.drivers.find(d => 
+        d.name === driverName || 
+        (d.allDrivers && d.allDrivers.includes(driverName))
+      );
+      
+      if (!myDriver) continue;
+      
+      // Initialiser les stats du circuit si nécessaire
+      if (!trackStats[trackCourse]) {
+        trackStats[trackCourse] = {
+          trackName: trackCourse,
+          sessions: 0,
+          bestLap: Infinity,
+          avgLap: 0,
+          allValidLaps: [],
+          topSpeed: 0,
+          lastSession: new Date(0),
+          totalLaps: 0
+        };
+      }
+      
+      const trackData = trackStats[trackCourse];
+      trackData.sessions++;
+      
+      // Date de la dernière session sur ce circuit
+      const sessionDate = file.mtimeIso ? new Date(file.mtimeIso) : new Date(0);
+      if (sessionDate > trackData.lastSession) {
+        trackData.lastSession = sessionDate;
+      }
+      
+      // Meilleur tour
+      if (isFinite(myDriver.bestLapSec) && myDriver.bestLapSec > 0 && myDriver.bestLapSec < trackData.bestLap) {
+        trackData.bestLap = myDriver.bestLapSec;
+      }
+      
+      // Vitesse de pointe
+      if (isFinite(myDriver.topSpeedMax) && myDriver.topSpeedMax > trackData.topSpeed) {
+        trackData.topSpeed = myDriver.topSpeedMax;
+      }
+      
+      // Collecter tous les tours valides pour calculer la moyenne globale
+      if (myDriver.laps) {
+        const validLaps = myDriver.laps
+          .map(l => l.timeSec)
+          .filter(t => isFinite(t) && t > 0);
+        trackData.allValidLaps.push(...validLaps);
+        
+        // Compter le nombre total de tours (y compris les tours non valides)
+        trackData.totalLaps += myDriver.laps.length;
+      }
+      
+    } catch (e) {
+      console.warn('Erreur lors du traitement du fichier pour les stats circuit:', file.filePath, e);
+    }
+  }
+  
+  // Calculer la moyenne globale pour chaque circuit
+  for (const track of Object.values(trackStats)) {
+    if (track.allValidLaps.length > 0) {
+      track.avgLap = track.allValidLaps.reduce((a, b) => a + b, 0) / track.allValidLaps.length;
+    } else {
+      track.avgLap = NaN;
+    }
+    
+    // Nettoyer les données temporaires
+    delete track.allValidLaps;
+    
+    // Si pas de meilleur tour trouvé, mettre NaN
+    if (track.bestLap === Infinity) {
+      track.bestLap = NaN;
+    }
+  }
+  
+  console.log('Résultat calculateTrackStats pour', driverName, ':', trackStats);
+  return trackStats;
+}
+
 try { 
   loadSavedFolder(); 
   loadSavedDriverName();

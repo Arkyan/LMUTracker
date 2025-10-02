@@ -280,22 +280,46 @@
         <td colspan="10">
           <div class="card" style="margin:8px;background:var(--panel);">
             <div style="font-weight:600;margin-bottom:12px;color:var(--accent);">📋 Tours détaillés</div>
-            <table class="table">
-              <thead><tr>
-                <th>#</th><th>Temps</th><th>S1</th><th>S2</th><th>S3</th><th>TopSpeed</th><th>Pit</th>
-              </tr></thead>
-              <tbody>
-                ${d.laps.map(l => `<tr>
-                  <td>${isFinite(l.num)? l.num : ''}</td>
-                  <td style="font-weight:500;">${fmtTime(l.timeSec)}</td>
-                  <td>${isFinite(l.s1)? l.s1.toFixed(3): ''}</td>
-                  <td>${isFinite(l.s2)? l.s2.toFixed(3): ''}</td>
-                  <td>${isFinite(l.s3)? l.s3.toFixed(3): ''}</td>
-                  <td>${isFinite(l.topSpeed) && l.topSpeed > 0 ? l.topSpeed.toFixed(1)+' km/h': '—'}</td>
-                  <td>${l.pit? '<span class="chip" style="background:var(--warn);color:#000;">⛽ Pit</span>' : ''}</td>
-                </tr>`).join('')}
-              </tbody>
-            </table>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;">
+              ${(() => {
+                // Diviser les tours en deux colonnes
+                const laps = d.laps;
+                const midPoint = Math.ceil(laps.length / 2);
+                const leftLaps = laps.slice(0, midPoint);
+                const rightLaps = laps.slice(midPoint);
+                
+                const createTableColumn = (lapsData, title) => `
+                  <div style="flex:1;min-width:300px;">
+                    <h4 style="margin:0 0 8px 0;color:var(--muted);font-size:14px;">${title}</h4>
+                    <table class="table">
+                      <thead><tr>
+                        <th>#</th><th>Temps</th><th>S1</th><th>S2</th><th>S3</th><th>TopSpeed</th><th>Pit</th>
+                      </tr></thead>
+                      <tbody>
+                        ${lapsData.map(l => `<tr>
+                          <td>${isFinite(l.num)? l.num : ''}</td>
+                          <td style="font-weight:500;">${fmtTime(l.timeSec)}</td>
+                          <td>${isFinite(l.s1)? l.s1.toFixed(3): ''}</td>
+                          <td>${isFinite(l.s2)? l.s2.toFixed(3): ''}</td>
+                          <td>${isFinite(l.s3)? l.s3.toFixed(3): ''}</td>
+                          <td>${isFinite(l.topSpeed) && l.topSpeed > 0 ? l.topSpeed.toFixed(1)+' km/h': '—'}</td>
+                          <td>${l.pit? '<span class="chip" style="background:var(--warn);color:#000;">⛽ Pit</span>' : ''}</td>
+                        </tr>`).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                `;
+                
+                let html = '';
+                if (leftLaps.length > 0) {
+                  html += createTableColumn(leftLaps, `Tours 1-${leftLaps.length}`);
+                }
+                if (rightLaps.length > 0) {
+                  html += createTableColumn(rightLaps, `Tours ${leftLaps.length + 1}-${laps.length}`);
+                }
+                return html;
+              })()}
+            </div>
           </div>
         </td>
       </tr>`;
