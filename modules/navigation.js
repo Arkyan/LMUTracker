@@ -12,6 +12,8 @@ let selectedCarClass = 'Hyper';
 const views = {
   profile: null,
   history: null,
+  vehicles: null,
+  vehicleDetail: null,
   settings: null
 };
 let navButtons = null;
@@ -24,12 +26,16 @@ function initNavigation() {
   views.profile = document.getElementById('view-profile');
   views.history = document.getElementById('view-history');
   views.settings = document.getElementById('view-settings');
+  views.vehicles = document.getElementById('view-vehicles');
+  views.vehicleDetail = document.getElementById('view-vehicle-detail');
   navButtons = document.querySelectorAll('.nav-btn');
   
   console.log('Éléments DOM trouvés:');
   console.log('- view-profile:', !!views.profile);
   console.log('- view-history:', !!views.history);
   console.log('- view-settings:', !!views.settings);
+  console.log('- view-vehicles:', !!views.vehicles);
+  console.log('- view-vehicle-detail:', !!views.vehicleDetail);
   console.log('- nav-btn count:', navButtons.length);
   
   // Ajouter les événements de clic sur les boutons de navigation
@@ -148,7 +154,82 @@ function handleViewSwitch(view) {
     if (window.LMUStorage) {
       window.LMUStorage.loadSavedSettings();
     }
+  } else if (view === 'vehicles') {
+    const container = document.getElementById('vehiclesContent');
+    if (!container) return;
+    try {
+      const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+      const files = window.LMUFileManager ? window.LMUFileManager.getLastScannedFiles() : null;
+      if (!driverName || !driverName.trim()) {
+        container.innerHTML = `
+          <div class="card" style="text-align:center;padding:40px;">
+            <div style="font-size:48px;margin-bottom:16px;">👤</div>
+            <h3 style="margin-bottom:12px;color:var(--text);">Aucun pilote configuré</h3>
+            <p class="muted" style="margin-bottom:16px;">Renseignez votre nom de pilote (ou plusieurs, séparés par des virgules) pour lister vos voitures.</p>
+            <button class="btn primary" onclick="switchView('settings')">⚙️ Aller aux paramètres</button>
+          </div>
+        `;
+        return;
+      }
+      const data = window.LMUStatsCalculator ? window.LMUStatsCalculator.getCachedVehicleStatsByClass(driverName, files) : {};
+      // Page voitures: afficher des cards cliquables sans stats
+      if (window.LMUProfileManager && window.LMUProfileManager.generateVehicleCardsPage) {
+        const html = window.LMUProfileManager.generateVehicleCardsPage(data);
+        // Si pas de sections rendues (aucun véhicule) on affiche un message plus explicite
+        if (!html || !html.trim() || !Object.keys(data || {}).some(k => (data[k]||[]).length > 0)) {
+          container.innerHTML = `
+            <div class="card" style="text-align:center;padding:40px;">
+              <div style="font-size:48px;margin-bottom:16px;">🚘</div>
+              <h3 style="margin-bottom:12px;color:var(--text);">Aucune voiture jouée trouvée</h3>
+              <p class="muted">Vérifiez que des sessions ont été scannées et que le nom du pilote correspond à ceux présents dans les fichiers (swaps inclus).</p>
+            </div>
+          `;
+        } else {
+          container.innerHTML = html;
+        }
+      } else {
+        container.innerHTML = '<div class="card">Aucune donnée disponible.</div>';
+      }
+    } catch (e) {
+      container.innerHTML = `<div class="card"><p class="muted">Erreur: ${e.message}</p></div>`;
+    }
+    // rendre les cards cliquables vers le détail
+    setTimeout(() => {
+      try {
+        document.querySelectorAll('#view-vehicles [data-vehicle][data-class]').forEach(el => {
+          el.addEventListener('click', () => {
+            const vehicleName = el.getAttribute('data-vehicle');
+            const carClass = el.getAttribute('data-class');
+            navigateToVehicleDetail(vehicleName, carClass);
+          });
+          el.style.cursor = 'pointer';
+        });
+      } catch (_) {}
+    }, 0);
+  } else if (view === 'vehicleDetail') {
+    const container = document.getElementById('vehicleDetailContent');
+    if (!container) return;
+    const vehicleName = window.__lmu_currentVehicleName || '';
+    const carClass = window.__lmu_currentVehicleClass || '';
+    const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+    const files = window.LMUFileManager ? window.LMUFileManager.getLastScannedFiles() : null;
+    const trackStats = window.LMUStatsCalculator ? window.LMUStatsCalculator.getCachedTrackStatsForVehicle(driverName, files, vehicleName, carClass) : {};
+    if (window.LMUProfileManager && window.LMUProfileManager.generateVehicleTrackPerformanceSection) {
+      container.innerHTML = window.LMUProfileManager.generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStats);
+    } else {
+      container.innerHTML = `<div class="card"><p class="muted">Aucune donnée disponible</p></div>`;
+    }
   }
+
+// Navigation programmée vers le détail véhicule
+function navigateToVehicleDetail(vehicleName, carClass) {
+  window.__lmu_currentVehicleName = vehicleName;
+  window.__lmu_currentVehicleClass = carClass;
+  if (window.history && window.history.pushState) {
+    try { window.history.pushState({ type: 'vehicle', vehicleName, carClass }, '', '#vehicle'); } catch(_) {}
+  }
+  switchView('vehicleDetail');
+}
 }
 
 // Obtenir la vue actuelle

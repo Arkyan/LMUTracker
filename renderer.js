@@ -143,7 +143,7 @@ function initializeApp() {
 function handleUrlHash() {
   const hash = window.location.hash.slice(1); // Enlever le #
   
-  if (hash && ['profile', 'history', 'settings'].includes(hash)) {
+  if (hash && ['profile', 'history', 'vehicles', 'vehicle', 'settings'].includes(hash)) {
     console.log(`Navigation vers la vue "${hash}" basée sur l'URL`);
     if (window.LMUNavigation && window.LMUNavigation.switchView) {
       window.LMUNavigation.switchView(hash);

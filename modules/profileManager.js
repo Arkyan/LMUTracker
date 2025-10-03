@@ -5,7 +5,7 @@
 
 (function() {
   // Version UI pour invalider le cache du profil quand la structure change
-  const UI_PROFILE_VERSION = 2;
+  const UI_PROFILE_VERSION = 3;
   // Générer le contenu complet du profil pilote
   function generateProfileContent() {
   const container = document.getElementById('profileContent');
@@ -44,9 +44,12 @@
     window.LMUStatsCalculator.getCachedDriverStats(driverName, lastScannedFiles) : null;
   const trackStats = window.LMUStatsCalculator ? 
     window.LMUStatsCalculator.getCachedTrackStats(driverName, lastScannedFiles, selectedCarClass) : {};
+  const vehicleStatsByClass = window.LMUStatsCalculator ?
+    window.LMUStatsCalculator.getCachedVehicleStatsByClass(driverName, lastScannedFiles) : {};
   
   let html = generateWelcomeSection(driverName, stats);
   html += generateTrackPerformanceSection(trackStats, selectedCarClass, lastScannedFiles);
+  html += generateCarClassPerformanceSection(vehicleStatsByClass);
   html += generateRecentSessionsSection(stats);
   
   container.innerHTML = html;
@@ -198,6 +201,159 @@ function generateRecentSessionsSection(stats) {
   }
 }
 
+// Nouvelle section: performances par voiture et par classe
+function generateCarClassPerformanceSection(vehicleStatsByClass) {
+  const { fmtTime } = window.LMUUtils || {};
+  const classNames = Object.keys(vehicleStatsByClass || {});
+  if (classNames.length === 0) return '';
+  
+  // Générer un bloc par classe
+  const sections = classNames.sort((a,b) => (window.LMUUtils?.getClassPriority(a)||999) - (window.LMUUtils?.getClassPriority(b)||999)).map(cls => {
+    const vehicles = vehicleStatsByClass[cls] || [];
+    if (vehicles.length === 0) return '';
+    const rows = vehicles.map(v => `
+      <tr data-vehicle="${v.vehicleName}" data-class="${cls}">
+        <td>${v.vehicleName}</td>
+        <td style="text-align:center;">${v.sessions}</td>
+        <td style="text-align:center;">${fmtTime ? fmtTime(v.bestLap) : v.bestLap?.toFixed?.(3) || '—'}</td>
+        <td style="text-align:center;">${fmtTime ? fmtTime(v.avgLap) : v.avgLap?.toFixed?.(3) || '—'}</td>
+        <td style="text-align:center;">${isFinite(v.topSpeed) && v.topSpeed > 0 ? `${Math.round(v.topSpeed)} km/h` : '—'}</td>
+      </tr>
+    `).join('');
+    return `
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <h3 style="margin:0;color:var(--accent);">🚗 ${cls}</h3>
+        </div>
+        <div style="overflow:auto;">
+          <table class="table centered" style="width:100%;">
+            <thead>
+              <tr>
+                <th style="text-align:left;">Voiture</th>
+                <th>Sessions</th>
+                <th>Meilleur tour</th>
+                <th>Moyenne tours</th>
+                <th>Vitesse max</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  return `
+    <div class="card" style="margin-bottom:24px;">
+      <h3 style="margin:0 0 12px 0;color:var(--accent);">🚘 Performances par voiture et par classe</h3>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        ${sections}
+      </div>
+    </div>
+  `;
+}
+
+// Page Voitures: grille de cards (sans stats), groupées par classe
+function generateVehicleCardsPage(vehicleStatsByClass) {
+  const classNames = Object.keys(vehicleStatsByClass || {});
+  if (classNames.length === 0) {
+    return `
+      <div class="card" style="text-align:center;padding:40px;">
+        <div style="font-size:48px;margin-bottom:16px;">🚘</div>
+        <h3 style="margin-bottom:12px;color:var(--text);">Aucune voiture trouvée</h3>
+        <p class="muted">Assurez-vous d'avoir scanné des sessions et d'avoir un pilote configuré.</p>
+      </div>
+    `;
+  }
+  const sections = classNames.sort((a,b) => (window.LMUUtils?.getClassPriority(a)||999) - (window.LMUUtils?.getClassPriority(b)||999)).map(cls => {
+    const vehicles = vehicleStatsByClass[cls] || [];
+    if (vehicles.length === 0) return '';
+    const cards = vehicles.map(v => `
+      <div class="card" data-vehicle="${v.vehicleName}" data-class="${cls}" style="cursor:pointer;">
+        <div class="row" style="justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:36px;height:36px;border-radius:8px;background:var(--panel);display:flex;align-items:center;justify-content:center;">🏎️</div>
+            <div>
+              <div style="font-weight:600;color:var(--text);">${v.vehicleName}</div>
+              <div class="muted" style="font-size:12px;">${cls}</div>
+            </div>
+          </div>
+          <div class="muted" style="font-size:12px;">Voir détail ➜</div>
+        </div>
+      </div>
+    `).join('');
+    return `
+      <div class="card" style="margin-bottom:16px;">
+        <h3 style="margin:0 0 8px 0;color:var(--accent);">${cls}</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
+          ${cards}
+        </div>
+      </div>
+    `;
+  }).join('');
+  return `
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h2 style="margin:0;">🚘 Voitures</h2>
+      </div>
+      ${sections}
+    </div>
+  `;
+}
+
+// Page détail véhicule: stats par circuit pour un véhicule et une classe
+function generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStats) {
+  const { fmtTime } = window.LMUUtils || {};
+  const entries = Object.values(trackStats || {});
+  const header = `
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
+      <button class="btn" onclick="switchView('vehicles')">⬅️ Retour</button>
+      <div class="muted" style="font-size:12px;">Classe: ${carClass}</div>
+    </div>
+    <h2 style="margin:0 0 8px 0;">🚗 ${vehicleName}</h2>
+  `;
+  if (entries.length === 0) {
+    return `
+      ${header}
+      <div class="card" style="padding:16px;">
+        <p class="muted">Aucune donnée trouvée pour ce véhicule dans la classe ${carClass}.</p>
+      </div>
+    `;
+  }
+  // trier par nb de sessions desc
+  entries.sort((a,b)=> b.sessions - a.sessions);
+  const rows = entries.map(t => `
+    <tr>
+      <td style="text-align:left;">${t.trackName}</td>
+      <td style="text-align:center;">${t.sessions}</td>
+      <td style="text-align:center;">${fmtTime ? fmtTime(t.bestLap) : t.bestLap?.toFixed?.(3) || '—'}</td>
+      <td style="text-align:center;">${fmtTime ? fmtTime(t.avgLap) : t.avgLap?.toFixed?.(3) || '—'}</td>
+      <td style="text-align:center;">${isFinite(t.topSpeed) && t.topSpeed > 0 ? `${Math.round(t.topSpeed)} km/h` : '—'}</td>
+    </tr>
+  `).join('');
+  return `
+    ${header}
+    <div class="card" style="overflow:auto;">
+      <table class="table centered" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="text-align:left;">Circuit</th>
+            <th>Sessions</th>
+            <th>Meilleur tour</th>
+            <th>Moyenne tours</th>
+            <th>Vitesse max</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 // Actualiser le profil (pour être appelé depuis d'autres modules)
 function refreshProfile() {
   generateProfileContent();
@@ -216,6 +372,9 @@ if (typeof window !== 'undefined') {
     generateEmptyProfileContent,
     generateWelcomeSection,
     generateTrackPerformanceSection,
+    generateCarClassPerformanceSection,
+    generateVehicleCardsPage,
+    generateVehicleTrackPerformanceSection,
     generateRecentSessionsSection,
     refreshProfile,
     canGenerateProfile
@@ -228,6 +387,9 @@ if (typeof module !== 'undefined' && module.exports) {
     generateEmptyProfileContent,
     generateWelcomeSection,
     generateTrackPerformanceSection,
+    generateCarClassPerformanceSection,
+    generateVehicleCardsPage,
+    generateVehicleTrackPerformanceSection,
     generateRecentSessionsSection,
     refreshProfile,
     canGenerateProfile
