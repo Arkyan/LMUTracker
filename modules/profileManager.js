@@ -4,6 +4,8 @@
  */
 
 (function() {
+  // Version UI pour invalider le cache du profil quand la structure change
+  const UI_PROFILE_VERSION = 2;
   // Générer le contenu complet du profil pilote
   function generateProfileContent() {
   const container = document.getElementById('profileContent');
@@ -17,7 +19,8 @@
   const cacheParams = {
     driverName,
     filesLength: lastScannedFiles?.length || 0,
-    selectedCarClass
+    selectedCarClass,
+    uiVersion: UI_PROFILE_VERSION
   };
   
   // Vérifier le cache d'abord
@@ -112,23 +115,6 @@ function generateWelcomeSection(driverName, stats) {
             <strong style="color:#a855f7;">${stats.totalPodiums}</strong>
           </div>
         </div>
-        
-        ${Object.keys(stats.podiumsByClass).length > 0 ? `
-          <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
-            <h4 style="margin:0 0 12px 0;color:var(--accent);font-size:14px;">🏁 Par classe</h4>
-            <div style="display:grid;gap:8px;">
-              ${Object.entries(stats.podiumsByClass).map(([className, data]) => `
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--panel-light);border-radius:6px;">
-                  <span style="color:var(--text);font-weight:500;">${className}</span>
-                  <div style="display:flex;gap:8px;">
-                    <span style="color:#fbbf24;font-size:12px;">🥇 ${data.wins}</span>
-                    <span style="color:#a855f7;font-size:12px;">🏅 ${data.podiums}</span>
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
       </div>
     </div>
   `;
