@@ -85,10 +85,25 @@ function initializeApp() {
       console.error('Module LMUFileManager non disponible');
     }
     
+    // Gérer la navigation basée sur le hash de l'URL
+    handleUrlHash();
+    
     console.log('LMU Tracker initialisé avec succès !');
   } catch (error) {
     console.error('Erreur lors de l\'initialisation:', error);
     console.error('Stack trace:', error.stack);
+  }
+}
+
+// Gérer la navigation basée sur le hash de l'URL
+function handleUrlHash() {
+  const hash = window.location.hash.slice(1); // Enlever le #
+  
+  if (hash && ['profile', 'history', 'settings'].includes(hash)) {
+    console.log(`Navigation vers la vue "${hash}" basée sur l'URL`);
+    if (window.LMUNavigation && window.LMUNavigation.switchView) {
+      window.LMUNavigation.switchView(hash);
+    }
   }
 }
 

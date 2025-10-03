@@ -37,11 +37,46 @@ function generateSessionCard(file) {
   const raceLaps = isFinite(finalLaps) && finalLaps > 0 ? `🔄 Tours : ${finalLaps}` : null;
   const trackLength = rr?.TrackLength ? 
     `📏 Circuit : ${parseFloat(rr.TrackLength).toFixed(1)}m` : null;
+  
+  // Extraire les informations de voiture et classe du pilote configuré dans les paramètres
+  let carInfo = null;
+  let classInfo = null;
+  
+  // Récupérer le nom du pilote configuré
+  const configuredDriverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+  
+  if (configuredDriverName && node && node.Driver) {
+    const drivers = window.LMUUtils?.arrayify ? window.LMUUtils.arrayify(node.Driver) : [node.Driver];
+    
+    // Chercher le pilote configuré dans la liste des pilotes
+    const playerDriver = drivers.find(driver => {
+      const driverName = driver.Name || '';
+      // Comparaison case-insensitive pour plus de flexibilité
+      return driverName.toLowerCase().includes(configuredDriverName.toLowerCase());
+    });
+    
+    if (playerDriver) {
+      const car = playerDriver.CarType || playerDriver.VehName || '';
+      const carClass = playerDriver.CarClass || '';
+      
+      if (car) {
+        carInfo = `${car}`;
+      }
+      if (carClass) {
+        const classDetails = getClassInfo ? getClassInfo(carClass) : { icon: '🏁', color: 'var(--accent)' };
+        classInfo = `<span style="background:${classDetails.color};color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;">${carClass}</span>`;
+      }
+    }
+  }
+  
   const fileName = file.filePath.split(/\\|\//).pop();
   const disabled = !!file.error;
   
   const statsChips = [raceTime, raceLaps, trackLength].filter(Boolean)
     .map(stat => `<span class="chip" style="font-size:11px;">${stat}</span>`).join(' ');
+  
+  // Informations de voiture et classe
+  const vehicleInfo = [carInfo, classInfo].filter(Boolean).join(' ');
   
   return `<div class="card" style="cursor:${disabled ? 'not-allowed' : 'pointer'};opacity:${disabled ? 0.6 : 1};transition:transform 0.2s, box-shadow 0.2s;" data-file-path="${disabled ? '' : encodeURIComponent(file.filePath)}">
     <div style="margin-bottom:12px;">
@@ -54,6 +89,7 @@ function generateSessionCard(file) {
       <div style="color:var(--muted);font-size:12px;margin-bottom:8px;">
         📅 ${timeString}
       </div>
+      ${vehicleInfo ? `<div style="margin-bottom:8px;">${vehicleInfo}</div>` : ''}
       ${statsChips ? `<div style="margin-bottom:8px;">${statsChips}</div>` : ''}
       <div style="color:var(--muted);font-size:10px;word-break:break-all;">
         📄 ${fileName}
