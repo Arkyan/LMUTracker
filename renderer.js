@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Initialiser tous les modules
-function initializeApp() {
+async function initializeApp() {
   console.log('Initialisation de LMU Tracker...');
   
   // Vérifier que tous les modules sont chargés
@@ -72,7 +72,11 @@ function initializeApp() {
     // Initialiser les modules dans l'ordre de dépendance
     if (window.LMUStorage) {
       console.log('Initialisation du module Storage...');
-      window.LMUStorage.initStorage();
+      try {
+        await window.LMUStorage.initStorage();
+      } catch (e) {
+        console.warn('Init Storage async a échoué ou a été interrompu:', e);
+      }
     } else {
       console.error('Module LMUStorage non disponible');
     }
@@ -110,6 +114,22 @@ function initializeApp() {
     
     // Effectuer le scan initial si un dossier est configuré
     performInitialScan();
+
+    // Quand l'historique rend un lot, (re)générer le profil si on est sur profil
+    try {
+      window.addEventListener('lmu:history-updated', () => {
+        const onProfileView = window.LMUNavigation && typeof window.LMUNavigation.getCurrentView === 'function'
+          ? window.LMUNavigation.getCurrentView() === 'profile' : false;
+        const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+        if (onProfileView && driverName && window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
+          // Evite de spammer: petite temporisation debounce
+          clearTimeout(window.__lmu_profileRegenerateTimer);
+          window.__lmu_profileRegenerateTimer = setTimeout(() => {
+            window.LMUProfileManager.generateProfileContent();
+          }, 150);
+        }
+      });
+    } catch (_) {}
 
     // Ecouter les retours/avancées navigateur pour SPA
     window.addEventListener('popstate', (ev) => {

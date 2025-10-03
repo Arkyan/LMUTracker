@@ -272,6 +272,11 @@ function appendHistoryCards(files) {
     localStorage.setItem('lmu.cachedHistoryHTML', html);
     localStorage.setItem('lmu.cachedHistoryMeta', JSON.stringify(historyState.cacheParams));
   } catch (_) {}
+  // Notifier le reste de l'app qu'un rendu d'historique a eu lieu (utile pour le profil)
+  try {
+    const detail = { rendered: historyState.renderedCount, totalMeta: historyState.filesMetaSorted.length };
+    window.dispatchEvent(new CustomEvent('lmu:history-updated', { detail }));
+  } catch (_) {}
 }
 
 function updateLoadMoreVisibility() {

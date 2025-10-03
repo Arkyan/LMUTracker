@@ -92,9 +92,38 @@ function switchView(view) {
 // Gérer les actions spécifiques lors du changement de vue
 function handleViewSwitch(view) {
   if (view === 'profile') {
-    // Générer le contenu du profil si le module ProfileManager est disponible
-    if (window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
-      window.LMUProfileManager.generateProfileContent();
+    // Attendre que les sessions soient chargées (au moins le premier lot) avant de générer le profil
+    try {
+      const files = window.LMUFileManager ? window.LMUFileManager.getLastScannedFiles() : null;
+      const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+      const profileContainer = document.getElementById('profileContent');
+      const needWait = (!files || files.length === 0) && !!(driverName && driverName.trim());
+      if (needWait && profileContainer) {
+        // Afficher un état de chargement discret
+        profileContainer.innerHTML = `
+          <div style="text-align:center;padding:24px;">
+            <div class="spinner" style="display:inline-block;margin-bottom:8px;"></div>
+            <div class="muted">Chargement des sessions…</div>
+          </div>
+        `;
+        // Écouter une seule fois la mise à jour de l'historique
+        const once = (ev) => {
+          try { window.removeEventListener('lmu:history-updated', once); } catch(_) {}
+          if (window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
+            window.LMUProfileManager.generateProfileContent();
+          }
+        };
+        try { window.addEventListener('lmu:history-updated', once, { once: true }); } catch(_) { window.addEventListener('lmu:history-updated', once); }
+      } else {
+        // Générer immédiatement si on a déjà des sessions ou si aucun pilote n'est configuré
+        if (window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
+          window.LMUProfileManager.generateProfileContent();
+        }
+      }
+    } catch (_) {
+      if (window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
+        window.LMUProfileManager.generateProfileContent();
+      }
     }
   } else if (view === 'history') {
     const container = document.getElementById('results');
