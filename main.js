@@ -25,9 +25,23 @@ try {
 
 function createWindow() {
   // Choisir l'icône selon la disponibilité (ICO préférable sur Windows)
-  let iconPath = path.join(__dirname, 'LMUTrackerLogo.webp');
-  const icoPath = path.join(__dirname, 'LMUTrackerLogo.ico');
-  const pngPath = path.join(__dirname, 'LMUTrackerLogo.png');
+  const candidateDirs = [
+    __dirname,
+    // En production, main.js est généralement dans resources/app
+    // On tente aussi resources/app et resources au cas où
+    path.join(process.resourcesPath || '', 'app'),
+    process.resourcesPath || ''
+  ].filter(Boolean);
+  function resolveFirstExisting(filename) {
+    for (const dir of candidateDirs) {
+      const p = path.join(dir, filename);
+      if (fsSync.existsSync(p)) return p;
+    }
+    return null;
+  }
+  let iconPath = resolveFirstExisting('LMUTrackerLogo.webp') || '';
+  const icoPath = resolveFirstExisting('LMUTrackerLogo.ico');
+  const pngPath = resolveFirstExisting('LMUTrackerLogo.png');
 
   if (fsSync.existsSync(icoPath)) {
     iconPath = icoPath;
@@ -38,7 +52,8 @@ function createWindow() {
   // Charger l'icône explicitement (utile en dev sous Windows)
   let browserIcon;
   try {
-    const img = nativeImage.createFromPath(iconPath);
+    const chosen = icoPath || pngPath || iconPath;
+    const img = chosen ? nativeImage.createFromPath(chosen) : nativeImage.createEmpty();
     if (!img.isEmpty()) {
       browserIcon = img;
     }
@@ -50,6 +65,7 @@ function createWindow() {
     minWidth: 1200,
     minHeight: 800,
   icon: browserIcon || iconPath,
+  icon: browserIcon || icoPath || pngPath || iconPath || undefined,
     autoHideMenuBar: true, // Cache la barre de menus par défaut (peut être réaffichée avec Alt)
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -62,9 +78,10 @@ function createWindow() {
   try {
     if (process.platform === 'win32' && typeof win.setAppDetails === 'function') {
       const appIconPath = fsSync.existsSync(icoPath) ? icoPath : (fsSync.existsSync(pngPath) ? pngPath : iconPath);
+      const appIcon = icoPath || pngPath || iconPath || undefined;
       win.setAppDetails({
         appId: getAppId(),
-        appIconPath,
+        appIconPath: appIcon,
         relaunchDisplayName: 'LMU Tracker'
       });
     }
