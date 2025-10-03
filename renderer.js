@@ -15,6 +15,10 @@
 // Initialisation de l'application
 document.addEventListener('DOMContentLoaded', function() {
   console.log('DOM chargé, attente du chargement des modules...');
+  // Flag global pour éviter de régénérer le profil plusieurs fois automatiquement
+  if (typeof window !== 'undefined' && window.__lmuProfileAutoloadDone === undefined) {
+    window.__lmuProfileAutoloadDone = false;
+  }
   
   // Attendre que tous les modules soient chargés
   const checkModulesLoaded = () => {

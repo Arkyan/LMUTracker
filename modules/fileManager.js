@@ -198,6 +198,22 @@ function displayScannedFiles(files, title, isNewScan = true) {
   
   // Ajouter les événements de clic sur les cartes
   setupCardEvents(container);
+
+  // Auto-chargement du profil au démarrage (une seule fois)
+  // Si on démarre sur la vue profil, qu'un pilote est configuré et que c'est un nouveau scan,
+  // générer le contenu du profil automatiquement sans nécessiter de clic utilisateur.
+  try {
+    const onProfileView = window.LMUNavigation && typeof window.LMUNavigation.getCurrentView === 'function'
+      ? window.LMUNavigation.getCurrentView() === 'profile'
+      : false;
+    const hasDriver = !!(driverName && driverName.trim());
+    if (isNewScan && onProfileView && hasDriver && !window.__lmuProfileAutoloadDone) {
+      window.__lmuProfileAutoloadDone = true;
+      if (window.LMUProfileManager && typeof window.LMUProfileManager.generateProfileContent === 'function') {
+        window.LMUProfileManager.generateProfileContent();
+      }
+    }
+  } catch (_) { /* no-op */ }
 }
 
 // Configurer les événements sur les cartes de session
