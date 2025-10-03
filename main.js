@@ -9,6 +9,16 @@ const parserOptions = {
   allowBooleanAttributes: true,
 };
 
+// Assure l'association correcte de l'icône dans la barre des tâches Windows
+// en définissant un AppUserModelID correspondant à build.appId
+try {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.lmutracker.app');
+  }
+} catch (_) {
+  // Pas critique sur autres plateformes / anciennes versions
+}
+
 function createWindow() {
   // Choisir l'icône selon la disponibilité (ICO préférable sur Windows)
   let iconPath = path.join(__dirname, 'LMUTrackerLogo.webp');

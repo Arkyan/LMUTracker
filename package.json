@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder"
   },
   "keywords": [],
   "author": "",
@@ -12,19 +13,33 @@
   "build": {
     "appId": "com.lmutracker.app",
     "productName": "LMU Tracker",
-    "icon": "LMUTrackerLogo.webp",
+    "icon": "LMUTrackerLogo.ico",
+    "asar": false,
     "directories": {
       "output": "dist"
     },
     "files": [
-      "**/*",
-      "!node_modules/**/*"
-    ]
-  },
-  "devDependencies": {
-    "electron": "^38.2.0"
+      "**/*"
+    ],
+    "win": {
+      "icon": "LMUTrackerLogo.ico",
+      "target": ["nsis"],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "installerIcon": "LMUTrackerLogo.ico",
+      "uninstallerIcon": "LMUTrackerLogo.ico",
+      "installerHeaderIcon": "LMUTrackerLogo.ico"
+    }
   },
   "dependencies": {
     "fast-xml-parser": "^5.2.5"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
   }
 }

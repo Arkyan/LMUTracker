@@ -277,7 +277,7 @@ function generateVehicleCardsPage(vehicleStatsByClass) {
             <div style="width:36px;height:36px;border-radius:8px;background:var(--panel);display:flex;align-items:center;justify-content:center;">🏎️</div>
             <div>
               <div style="font-weight:600;color:var(--text);">${v.vehicleName}</div>
-              <div class="muted" style="font-size:12px;">${cls}</div>
+              <div class="muted" style="font-size:12px;">${cls} • ${v.totalLaps ?? 0} tour${(v.totalLaps ?? 0) > 1 ? 's' : ''}</div>
             </div>
           </div>
           <div class="muted" style="font-size:12px;">Voir détail ➜</div>
@@ -328,6 +328,7 @@ function generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStat
     <tr>
       <td style="text-align:left;">${t.trackName}</td>
       <td style="text-align:center;">${t.sessions}</td>
+      <td style=\"text-align:center;\">${t.totalLaps || 0}</td>
       <td style="text-align:center;">${fmtTime ? fmtTime(t.bestLap) : t.bestLap?.toFixed?.(3) || '—'}</td>
       <td style="text-align:center;">${fmtTime ? fmtTime(t.avgLap) : t.avgLap?.toFixed?.(3) || '—'}</td>
       <td style="text-align:center;">${isFinite(t.topSpeed) && t.topSpeed > 0 ? `${Math.round(t.topSpeed)} km/h` : '—'}</td>
@@ -341,6 +342,7 @@ function generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStat
           <tr>
             <th style="text-align:left;">Circuit</th>
             <th>Sessions</th>
+            <th>Tours</th>
             <th>Meilleur tour</th>
             <th>Moyenne tours</th>
             <th>Vitesse max</th>
