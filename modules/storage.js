@@ -17,16 +17,45 @@ let driverNameInput = null;
 let currentFolderSpan = null;
 let btnSaveSettings = null;
 
+// Cache en mémoire des paramètres persistés
+let persistedSettings = {
+  resultsFolder: '',
+  driverName: '',
+  selectedCarClass: 'Hyper'
+};
+
+// Utilitaires: lire/écrire via l'API preload (IPC)
+async function readPersistedSettings() {
+  try {
+    if (window.lmuAPI && window.lmuAPI.readSettings) {
+      const res = await window.lmuAPI.readSettings();
+      if (res && res.ok) {
+        return res.data || {};
+      }
+    }
+  } catch (e) {}
+  return {};
+}
+
+async function writePersistedSettings(data) {
+  try {
+    if (window.lmuAPI && window.lmuAPI.writeSettings) {
+      await window.lmuAPI.writeSettings(data || {});
+    }
+  } catch (e) {}
+}
+
 // Initialiser le module de stockage
-function initStorage() {
+async function initStorage() {
   // Récupérer les éléments DOM
   resultsFolderInput = document.getElementById('resultsFolder');
   driverNameInput = document.getElementById('driverName');
   currentFolderSpan = document.getElementById('currentFolder');
   btnSaveSettings = document.getElementById('btnSaveSettings');
   
-  // Charger les valeurs sauvegardées
-  loadSavedSettings();
+  // Charger les valeurs sauvegardées (persistées JSON)
+  await ensureSettingsLoaded();
+  applySettingsToUI();
   
   // Ajouter l'événement de sauvegarde si le bouton existe
   if (btnSaveSettings) {
@@ -36,7 +65,7 @@ function initStorage() {
 
 // Charger le dossier de résultats sauvegardé
 function loadSavedFolder() {
-  const saved = localStorage.getItem(STORAGE_KEYS.RESULTS_FOLDER) || '';
+  const saved = persistedSettings.resultsFolder || '';
   if (resultsFolderInput) {
     resultsFolderInput.value = saved;
   }
@@ -48,7 +77,7 @@ function loadSavedFolder() {
 
 // Charger le nom de pilote sauvegardé
 function loadSavedDriverName() {
-  const saved = localStorage.getItem(STORAGE_KEYS.DRIVER_NAME) || '';
+  const saved = persistedSettings.driverName || '';
   if (driverNameInput) {
     driverNameInput.value = saved;
   }
@@ -57,14 +86,13 @@ function loadSavedDriverName() {
 
 // Charger la classe de voiture sélectionnée
 function loadSelectedCarClass() {
-  const saved = localStorage.getItem(STORAGE_KEYS.SELECTED_CAR_CLASS) || 'Hyper';
-  return saved;
+  return persistedSettings.selectedCarClass || 'Hyper';
 }
 
 // Charger tous les paramètres sauvegardés
 function loadSavedSettings() {
-  loadSavedFolder();
-  loadSavedDriverName();
+  // Compat: conserve la signature (utilisée ailleurs) mais lit depuis le cache
+  applySettingsToUI();
   const selectedClass = loadSelectedCarClass();
   
   // Mettre à jour la navigation avec la classe sélectionnée
@@ -82,17 +110,17 @@ function loadSavedSettings() {
 
 // Obtenir le nom de pilote configuré
 function getConfiguredDriverName() {
-  return localStorage.getItem(STORAGE_KEYS.DRIVER_NAME) || '';
+  return persistedSettings.driverName || '';
 }
 
 // Obtenir le dossier de résultats configuré
 function getConfiguredResultsFolder() {
-  return localStorage.getItem(STORAGE_KEYS.RESULTS_FOLDER) || '';
+  return persistedSettings.resultsFolder || '';
 }
 
 // Sauvegarder le dossier de résultats
 function saveResultsFolder(folderPath) {
-  localStorage.setItem(STORAGE_KEYS.RESULTS_FOLDER, folderPath);
+  persistedSettings.resultsFolder = folderPath || '';
   if (currentFolderSpan) {
     currentFolderSpan.textContent = folderPath ? `Dossier par défaut: ${folderPath}` : '';
   }
@@ -100,22 +128,23 @@ function saveResultsFolder(folderPath) {
 
 // Sauvegarder le nom de pilote
 function saveDriverName(driverName) {
-  localStorage.setItem(STORAGE_KEYS.DRIVER_NAME, driverName);
+  persistedSettings.driverName = driverName || '';
 }
 
 // Sauvegarder la classe de voiture sélectionnée
 function saveSelectedCarClass(carClass) {
-  localStorage.setItem(STORAGE_KEYS.SELECTED_CAR_CLASS, carClass);
+  persistedSettings.selectedCarClass = carClass || 'Hyper';
 }
 
 // Sauvegarder tous les paramètres
-function saveSettings() {
+async function saveSettings() {
   const folderValue = resultsFolderInput ? resultsFolderInput.value.trim() : '';
   const driverValue = driverNameInput ? driverNameInput.value.trim() : '';
   
   // Sauvegarder les valeurs
   saveResultsFolder(folderValue);
   saveDriverName(driverValue);
+  await writePersistedSettings(persistedSettings);
   
   // Recharger les valeurs pour mettre à jour l'affichage
   loadSavedFolder();
@@ -166,6 +195,7 @@ function updateResultsFolder(folderPath) {
   if (resultsFolderInput) {
     resultsFolderInput.value = folderPath;
   }
+  saveResultsFolder(folderPath || '');
 }
 
 // Vérifier si les paramètres de base sont configurés
@@ -186,16 +216,47 @@ function getAllSettings() {
 }
 
 // Réinitialiser tous les paramètres
-function resetSettings() {
-  localStorage.removeItem(STORAGE_KEYS.RESULTS_FOLDER);
-  localStorage.removeItem(STORAGE_KEYS.DRIVER_NAME);
-  localStorage.removeItem(STORAGE_KEYS.SELECTED_CAR_CLASS);
-  
-  loadSavedSettings();
+async function resetSettings() {
+  persistedSettings = { resultsFolder: '', driverName: '', selectedCarClass: 'Hyper' };
+  await writePersistedSettings(persistedSettings);
+  applySettingsToUI();
   
   if (window.LMUStatsCalculator && window.LMUStatsCalculator.invalidateCache) {
     window.LMUStatsCalculator.invalidateCache();
   }
+}
+
+// Charger depuis JSON au démarrage et migrer localStorage -> JSON si nécessaire
+async function ensureSettingsLoaded() {
+  const fromDisk = await readPersistedSettings();
+  const diskHasValues = fromDisk && (fromDisk.resultsFolder || fromDisk.driverName || fromDisk.selectedCarClass);
+
+  if (diskHasValues) {
+    persistedSettings = {
+      resultsFolder: fromDisk.resultsFolder || '',
+      driverName: fromDisk.driverName || '',
+      selectedCarClass: fromDisk.selectedCarClass || 'Hyper'
+    };
+  } else {
+    // Migration depuis localStorage si présent
+    try {
+      const lsFolder = localStorage.getItem(STORAGE_KEYS.RESULTS_FOLDER) || '';
+      const lsDriver = localStorage.getItem(STORAGE_KEYS.DRIVER_NAME) || '';
+      const lsClass = localStorage.getItem(STORAGE_KEYS.SELECTED_CAR_CLASS) || 'Hyper';
+      persistedSettings = { resultsFolder: lsFolder, driverName: lsDriver, selectedCarClass: lsClass };
+      await writePersistedSettings(persistedSettings);
+    } catch (_) {
+      // Fallback par défaut
+      persistedSettings = { resultsFolder: '', driverName: '', selectedCarClass: 'Hyper' };
+      await writePersistedSettings(persistedSettings);
+    }
+  }
+}
+
+function applySettingsToUI() {
+  if (resultsFolderInput) resultsFolderInput.value = persistedSettings.resultsFolder || '';
+  if (driverNameInput) driverNameInput.value = persistedSettings.driverName || '';
+  if (currentFolderSpan) currentFolderSpan.textContent = persistedSettings.resultsFolder ? `Dossier par défaut: ${persistedSettings.resultsFolder}` : '';
 }
 
 // Export des fonctions

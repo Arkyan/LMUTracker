@@ -8,6 +8,16 @@
   let lastScannedFiles = null; // [{filePath, parsed}] ou erreurs
 let lastSession = null; // session extraite du fichier affiché
 
+  // État d'affichage de l'historique (lazy loading)
+  const historyState = {
+    filesMetaSorted: [], // [{filePath, mtimeMs, mtimeIso}]
+    renderedCount: 0,
+    // Demande: 48 par lot
+    pageSize: 48,
+    title: 'Sessions trouvées',
+    cacheParams: null
+  };
+
 // Éléments DOM
 let filePickerCard = null;
 let fileSelect = null;
@@ -101,15 +111,30 @@ async function scanConfiguredFolder() {
   
   container.innerHTML = `<h2>Dossier (config): ${folder}</h2><p><span class="spinner"></span> Scan en cours…</p>`;
   
-  const res = await window.lmuAPI.scanFolder(folder);
-  if (res.canceled) {
-    container.innerHTML = `<p class="muted">Scan annulé: ${res.error ?? ''}</p>`;
+  // Nouveau flux: d'abord lister les fichiers (métadonnées), sans parser
+  const listRes = await window.lmuAPI.listLmuFiles(folder);
+  if (listRes.canceled) {
+    container.innerHTML = `<p class="muted">Scan annulé: ${listRes.error ?? ''}</p>`;
     return;
   }
-  
-  if (Array.isArray(res.files)) {
-    displayScannedFiles(res.files, `Sessions trouvées`, true);
+  // Trier par plus récent (listRes.filesMeta est déjà trié dans main)
+  historyState.filesMetaSorted = Array.isArray(listRes.filesMeta) ? listRes.filesMeta.slice() : [];
+  historyState.renderedCount = 0;
+  // Parser uniquement le premier lot
+  const firstBatchPaths = historyState.filesMetaSorted.slice(0, historyState.pageSize).map(m => m.filePath);
+  if (firstBatchPaths.length === 0) {
+    displayScannedFiles([], `Sessions trouvées`, true);
+    return;
   }
+  const parseRes = await window.lmuAPI.parseLmuFiles(firstBatchPaths);
+  if (parseRes.canceled) {
+    container.innerHTML = `<p class="muted">Erreur lors du parsing: ${parseRes.error ?? ''}</p>`;
+    return;
+  }
+  // Afficher le premier lot
+  displayScannedFiles(parseRes.files || [], `Sessions trouvées`, true);
+  // Avancer le compteur rendu (lot parsé)
+  historyState.renderedCount = firstBatchPaths.length;
 }
 
 // Afficher les fichiers scannés
@@ -126,6 +151,7 @@ function displayScannedFiles(files, title, isNewScan = true) {
     folderPath,
     title
   };
+  historyState.cacheParams = cacheParams;
   
   // Vérifier le cache d'abord
   if (window.LMUCacheManager) {
@@ -154,50 +180,21 @@ function displayScannedFiles(files, title, isNewScan = true) {
     }
   }
   
-  // Trier les fichiers du plus récent au plus ancien
-  const sortedFiles = files.slice().sort((a, b) => {
-    const getDateTime = (file) => {
-      const rr = window.LMUXMLParser ? window.LMUXMLParser.getRaceResultsRoot(file.parsed) : null;
-      if (rr && rr.DateTime) {
-        return parseInt(rr.DateTime) * 1000; // Convertir en millisecondes
-      }
-      return file.mtimeIso ? new Date(file.mtimeIso).getTime() : 0;
-    };
-    return getDateTime(b) - getDateTime(a); // Plus récent en premier
-  });
-  
-  // Générer les cartes avec le renderEngine
-  const cards = sortedFiles.map(file => 
-    window.LMURenderEngine ? window.LMURenderEngine.generateSessionCard(file) : ''
-  ).join('');
+  // Les fichiers fournis sont déjà le lot courant à afficher; ne pas re-trier ici.
+  // Conserver dans lastScannedFiles; renderedCount est géré lors du scan initial et des chargements.
+  if (isNewScan) {
+    historyState.renderedCount = files.length;
+  }
+  historyState.title = title;
   
   const container = document.getElementById('results');
   if (!container) return;
   
-  const fullContent = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h2 style="margin:0;">${title}</h2>
-      <button class="btn" onclick="manualRescan()" style="font-size:12px;padding:6px 12px;">
-        🔄 Actualiser
-      </button>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;">
-      ${cards}
-    </div>`;
-  
-  container.innerHTML = fullContent;
-  
-  // Mettre en cache le contenu généré
-  if (window.LMUCacheManager) {
-    window.LMUCacheManager.setCachedContent('history', fullContent, cacheParams);
-  }
-  try {
-    localStorage.setItem('lmu.cachedHistoryHTML', fullContent);
-    localStorage.setItem('lmu.cachedHistoryMeta', JSON.stringify(cacheParams));
-  } catch (_) {}
-  
-  // Ajouter les événements de clic sur les cartes
-  setupCardEvents(container);
+  // Rendre le squelette (header + grille + bouton 'Charger plus')
+  renderHistorySkeleton(container, title);
+  // Rendre les cartes du lot fourni
+  appendHistoryCards(files);
+  updateLoadMoreVisibility();
 
   // Auto-chargement du profil au démarrage (une seule fois)
   // Si on démarre sur la vue profil, qu'un pilote est configuré et que c'est un nouveau scan,
@@ -214,6 +211,84 @@ function displayScannedFiles(files, title, isNewScan = true) {
       }
     }
   } catch (_) { /* no-op */ }
+}
+
+// Rendre l'entête et la grille vide + bouton 'Charger plus'
+function renderHistorySkeleton(container, title) {
+  const skeleton = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 style="margin:0;">${title}</h2>
+      <button class="btn" onclick="manualRescan()" style="font-size:12px;padding:6px 12px;">🔄 Actualiser</button>
+    </div>
+    <div id="historyGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>
+    <div id="historyLoadMore" style="margin-top:16px;text-align:center;">
+      <button class="btn" id="btnLoadMoreHistory" onclick="loadMoreHistory()">⬇️ Charger plus</button>
+    </div>
+  `;
+  container.innerHTML = skeleton;
+}
+
+// Rendre le prochain lot de cartes et mettre à jour le cache/événements
+function renderNextHistoryBatch() {
+  const container = document.getElementById('results');
+  const grid = document.getElementById('historyGrid');
+  if (!container || !grid) return;
+
+  const start = historyState.renderedCount;
+  const end = Math.min(start + historyState.pageSize, historyState.filesMetaSorted.length);
+  if (start >= end) {
+    // Rien à ajouter
+    updateLoadMoreVisibility();
+    return;
+  }
+  const nextBatchPaths = historyState.filesMetaSorted.slice(start, end).map(m => m.filePath);
+  // Demander au main process de parser le prochain lot
+  window.lmuAPI.parseLmuFiles(nextBatchPaths).then(parseRes => {
+    if (parseRes && !parseRes.canceled) {
+      const files = parseRes.files || [];
+      appendHistoryCards(files);
+      historyState.renderedCount = end;
+    }
+    updateLoadMoreVisibility();
+  }).catch(() => updateLoadMoreVisibility());
+}
+
+function appendHistoryCards(files) {
+  const container = document.getElementById('results');
+  const grid = document.getElementById('historyGrid');
+  if (!container || !grid) return;
+  const cards = files.map(file => window.LMURenderEngine ? window.LMURenderEngine.generateSessionCard(file) : '').join('');
+  const temp = document.createElement('div');
+  temp.innerHTML = cards;
+  Array.from(temp.children).forEach(child => grid.appendChild(child));
+  // Événements
+  setupCardEvents(grid);
+  // Cache
+  try {
+    const html = container.innerHTML;
+    if (window.LMUCacheManager) {
+      window.LMUCacheManager.setCachedContent('history', html, historyState.cacheParams);
+    }
+    localStorage.setItem('lmu.cachedHistoryHTML', html);
+    localStorage.setItem('lmu.cachedHistoryMeta', JSON.stringify(historyState.cacheParams));
+  } catch (_) {}
+}
+
+function updateLoadMoreVisibility() {
+  const btn = document.getElementById('btnLoadMoreHistory');
+  const loadMoreWrap = document.getElementById('historyLoadMore');
+  if (!btn || !loadMoreWrap) return;
+  const hasMore = historyState.renderedCount < historyState.sortedFiles.length;
+  if (!hasMore) {
+    loadMoreWrap.style.display = 'none';
+  } else {
+    loadMoreWrap.style.display = '';
+  }
+}
+
+// Handler global pour le bouton 'Charger plus'
+function loadMoreHistory() {
+  renderNextHistoryBatch();
 }
 
 // Configurer les événements sur les cartes de session
@@ -395,6 +470,8 @@ if (typeof window !== 'undefined') {
     getErrorFileCount,
     resetFileState
   };
+  // Exposer loadMoreHistory pour l'onclick du bouton
+  window.loadMoreHistory = loadMoreHistory;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
