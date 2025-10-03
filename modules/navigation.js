@@ -91,10 +91,57 @@ function handleViewSwitch(view) {
       window.LMUProfileManager.generateProfileContent();
     }
   } else if (view === 'history') {
-    // Scanner le dossier configuré si pas encore fait
-    if (window.LMUFileManager && window.LMUFileManager.scanConfiguredFolder && 
-        !window.LMUFileManager.getLastScannedFiles()) {
-      window.LMUFileManager.scanConfiguredFolder();
+    const container = document.getElementById('results');
+    if (!container) return;
+    
+    // Paramètres pour le cache
+    const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+    const folderPath = window.LMUStorage ? window.LMUStorage.getConfiguredResultsFolder() : '';
+    const files = window.LMUFileManager ? window.LMUFileManager.getLastScannedFiles() : null;
+    
+    const cacheParams = {
+      driverName,
+      filesLength: files?.length || 0,
+      folderPath,
+      title: 'Sessions trouvées'
+    };
+    
+    // Essayer d'abord le cache
+    if (window.LMUCacheManager) {
+      const cachedContent = window.LMUCacheManager.getCachedContent('history', cacheParams);
+      if (cachedContent) {
+        console.log('Navigation: utilisation du cache pour l\'historique');
+        container.innerHTML = cachedContent;
+        // Réattacher les événements
+        if (window.LMUFileManager && window.LMUFileManager.setupCardEvents) {
+          window.LMUFileManager.setupCardEvents(container);
+        }
+        return;
+      }
+    }
+    
+    // Si pas de cache, vérifier s'il y a des fichiers scannés
+    if (files && files.length > 0) {
+      console.log('Navigation: affichage des fichiers scannés depuis la mémoire');
+      if (window.LMUFileManager && window.LMUFileManager.displayScannedFiles) {
+        window.LMUFileManager.displayScannedFiles(files, 'Sessions trouvées', false);
+      }
+    } else {
+      // Afficher un message demandant de scanner
+      console.log('Navigation: aucun fichier scanné, affichage du message');
+      container.innerHTML = `
+        <div class="card" style="text-align:center;padding:40px;">
+          <div style="font-size:48px;margin-bottom:16px;">📁</div>
+          <h3 style="margin-bottom:12px;color:var(--text);">Aucune session chargée</h3>
+          <p style="margin-bottom:20px;color:var(--muted);">
+            ${folderPath ? `Dossier configuré: ${folderPath}` : 'Aucun dossier configuré'}
+          </p>
+          <button class="btn primary" onclick="manualRescan()" ${!folderPath ? 'disabled' : ''}>
+            🔄 Scanner les sessions
+          </button>
+          ${!folderPath ? '<p style="margin-top:12px;color:var(--muted);font-size:12px;">Configurez d\'abord un dossier dans les paramètres</p>' : ''}
+        </div>
+      `;
     }
   } else if (view === 'settings') {
     // Charger les paramètres sauvegardés
@@ -116,6 +163,11 @@ function filterByCarClass(carClass) {
   // Invalider le cache des stats car le filtre a changé
   if (window.LMUStatsCalculator && window.LMUStatsCalculator.invalidateCache) {
     window.LMUStatsCalculator.invalidateCache();
+  }
+  
+  // Invalider seulement le cache du profil car la classe a changé
+  if (window.LMUCacheManager && window.LMUCacheManager.invalidateCache) {
+    window.LMUCacheManager.invalidateCache('profile');
   }
   
   // Régénérer le contenu du profil si on est sur cette vue
@@ -154,6 +206,13 @@ function navigateToProfile() {
   return navigateToView('profile');
 }
 
+// Fonction pour rescanner manuellement le dossier
+function manualRescan() {
+  if (window.LMUFileManager && window.LMUFileManager.scanConfiguredFolder) {
+    window.LMUFileManager.scanConfiguredFolder();
+  }
+}
+
 // Export des fonctions
 if (typeof window !== 'undefined') {
   window.LMUNavigation = {
@@ -166,12 +225,14 @@ if (typeof window !== 'undefined') {
     navigateToView,
     navigateToSettings,
     navigateToHistory,
-    navigateToProfile
+    navigateToProfile,
+    manualRescan
   };
   
-  // Expose filterByCarClass globalement pour les onclick dans le HTML
+  // Expose filterByCarClass et manualRescan globalement pour les onclick dans le HTML
   window.filterByCarClass = filterByCarClass;
   window.switchView = switchView;
+  window.manualRescan = manualRescan;
 }
 
 if (typeof module !== 'undefined' && module.exports) {

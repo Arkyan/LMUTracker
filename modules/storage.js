@@ -138,6 +138,11 @@ function saveSettings() {
     window.LMUStatsCalculator.invalidateCache();
   }
   
+  // Invalider le cache des vues car les paramètres ont changé
+  if (window.LMUCacheManager && window.LMUCacheManager.invalidateCache) {
+    window.LMUCacheManager.invalidateCache();
+  }
+  
   // Mettre à jour le profil avec les nouveaux paramètres
   if (window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
     window.LMUProfileManager.generateProfileContent();

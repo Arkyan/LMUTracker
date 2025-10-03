@@ -24,11 +24,6 @@ function initFileManager() {
   
   // Ajouter les événements
   setupEventListeners();
-  
-  // Scanner automatiquement le dossier configuré au démarrage
-  setTimeout(() => {
-    scanConfiguredFolder();
-  }, 100);
 }
 
 // Configurer les événements
@@ -83,7 +78,7 @@ async function openFolderDialog() {
   const res = await window.lmuAPI.openFolder();
   if (res.canceled) return;
   
-  displayScannedFiles(res.files, `Dossier : ${res.folderPath}`);
+  displayScannedFiles(res.files, `Dossier : ${res.folderPath}`, true);
 }
 
 // Sélectionner un dossier pour les paramètres
@@ -113,17 +108,50 @@ async function scanConfiguredFolder() {
   }
   
   if (Array.isArray(res.files)) {
-    displayScannedFiles(res.files, `Sessions trouvées`);
+    displayScannedFiles(res.files, `Sessions trouvées`, true);
   }
 }
 
 // Afficher les fichiers scannés
-function displayScannedFiles(files, title) {
+function displayScannedFiles(files, title, isNewScan = true) {
   lastScannedFiles = files;
   
-  // Invalider le cache lors du changement de données
-  if (window.LMUStatsCalculator && window.LMUStatsCalculator.invalidateCache) {
-    window.LMUStatsCalculator.invalidateCache();
+  const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+  const folderPath = window.LMUStorage ? window.LMUStorage.getConfiguredResultsFolder() : '';
+  
+  // Paramètres pour le cache
+  const cacheParams = {
+    driverName,
+    filesLength: files.length,
+    folderPath,
+    title
+  };
+  
+  // Vérifier le cache d'abord
+  if (window.LMUCacheManager) {
+    const cachedContent = window.LMUCacheManager.getCachedContent('history', cacheParams);
+    if (cachedContent) {
+      const container = document.getElementById('results');
+      if (container) {
+        container.innerHTML = cachedContent;
+        // Réattacher les événements après avoir restauré le contenu du cache
+        setupCardEvents(container);
+        return;
+      }
+    }
+  }
+  
+  // Invalider le cache seulement pour un nouveau scan
+  if (isNewScan) {
+    if (window.LMUStatsCalculator && window.LMUStatsCalculator.invalidateCache) {
+      window.LMUStatsCalculator.invalidateCache();
+    }
+    
+    // Invalider seulement le cache de l'historique car les fichiers ont changé
+    if (window.LMUCacheManager && window.LMUCacheManager.invalidateCache) {
+      window.LMUCacheManager.invalidateCache('history');
+      window.LMUCacheManager.invalidateCache('profile'); // Le profil dépend aussi des fichiers
+    }
   }
   
   // Trier les fichiers du plus récent au plus ancien
@@ -146,10 +174,27 @@ function displayScannedFiles(files, title) {
   const container = document.getElementById('results');
   if (!container) return;
   
-  container.innerHTML = `<h2>${title}</h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:16px;">
+  const fullContent = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 style="margin:0;">${title}</h2>
+      <button class="btn" onclick="manualRescan()" style="font-size:12px;padding:6px 12px;">
+        🔄 Actualiser
+      </button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;">
       ${cards}
     </div>`;
+  
+  container.innerHTML = fullContent;
+  
+  // Mettre en cache le contenu généré
+  if (window.LMUCacheManager) {
+    window.LMUCacheManager.setCachedContent('history', fullContent, cacheParams);
+  }
+  try {
+    localStorage.setItem('lmu.cachedHistoryHTML', fullContent);
+    localStorage.setItem('lmu.cachedHistoryMeta', JSON.stringify(cacheParams));
+  } catch (_) {}
   
   // Ajouter les événements de clic sur les cartes
   setupCardEvents(container);
@@ -172,11 +217,69 @@ function setupCardEvents(container) {
       card.style.boxShadow = '';
     });
     
-    // Navigation vers la page de session
-    card.addEventListener('click', () => {
-      window.location.href = `session.html?file=${filePath}`;
+    // Rendu in-place de la session (SPA) sans rechargement
+    card.addEventListener('click', async () => {
+      const decodedPath = decodeURIComponent(filePath);
+      try {
+        window.history.pushState({ type: 'session', filePath: decodedPath }, '', '#session');
+      } catch (_) {}
+      renderSessionInPlace(decodedPath);
     });
   });
+}
+
+// Rendu d'une session dans la vue historique sans changer de page
+async function renderSessionInPlace(absFilePath) {
+  const container = document.getElementById('results');
+  if (!container) return;
+  
+    container.innerHTML = `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
+      <button class="btn" id="btnBackToHistory">⬅️ Retour</button>
+      <span class="muted" style="font-size:12px;word-break:break-all;">${absFilePath}</span>
+    </div>
+    <div id="sessionView" class="card"><span class="spinner"></span> Chargement de la session…</div>`;
+  
+  const btn = container.querySelector('#btnBackToHistory');
+  if (btn) btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    try { window.history.back(); } catch (_) { restoreHistoryFromCache(); }
+  });
+  
+  try {
+    const res = await window.lmuAPI.openFileByPath(absFilePath);
+    if (res.canceled) {
+      container.querySelector('#sessionView').innerHTML = `<p class="muted">Erreur: ${res.error || 'inconnue'}</p>`;
+      return;
+    }
+    const session = window.LMUXMLParser ? window.LMUXMLParser.extractSession(res.parsed) : null;
+    if (!session) {
+      container.querySelector('#sessionView').innerHTML = `<pre>${JSON.stringify(res.parsed, null, 2)}</pre>`;
+      return;
+    }
+    if (window.LMURenderEngine && window.LMURenderEngine.renderSessionInto) {
+      window.LMURenderEngine.renderSessionInto(container.querySelector('#sessionView'), res.filePath, session);
+    } else {
+      container.querySelector('#sessionView').innerHTML = '<p class="muted">Module de rendu non disponible.</p>';
+    }
+  } catch (error) {
+    console.error('Erreur lors du rendu de la session:', error);
+    const el = container.querySelector('#sessionView');
+    if (el) el.innerHTML = `<p class="muted">Erreur lors du chargement: ${error.message}</p>`;
+  }
+}
+
+// Restaurer la liste de l'historique depuis le cache persistant
+function restoreHistoryFromCache() {
+  const container = document.getElementById('results');
+  if (!container) return false;
+  try {
+    const cached = localStorage.getItem('lmu.cachedHistoryHTML');
+    if (!cached) return false;
+    container.innerHTML = cached;
+    setupCardEvents(container);
+    try { window.history.replaceState({ type: 'history' }, '', '#history'); } catch (_) {}
+    return true;
+  } catch (_) { return false; }
 }
 
 // Afficher un fichier sélectionné depuis le sélecteur
@@ -265,6 +368,8 @@ if (typeof window !== 'undefined') {
     scanConfiguredFolder,
     displayScannedFiles,
     setupCardEvents,
+    renderSessionInPlace,
+    restoreHistoryFromCache,
     showSelectedFile,
     getLastScannedFiles,
     getLastSession,

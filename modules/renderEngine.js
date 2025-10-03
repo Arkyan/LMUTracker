@@ -212,8 +212,7 @@ function generateClassFilterButtons(selectedCarClass) {
 function renderSessionInto(container, fileLabel, session) {
   const { meta, drivers } = session;
   let html = '';
-  
-  if (fileLabel) html += `<h3 style="margin-bottom:12px;">${fileLabel}</h3>`;
+  // fileLabel volontairement ignoré pour ne plus afficher le nom/chemin du fichier
   
   // En-tête de session
   html += `<div style="background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(167,139,250,0.1));border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;">
@@ -226,8 +225,8 @@ function renderSessionInto(container, fileLabel, session) {
     </div>
   </div>`;
   
-  // Tableau des résultats
-  html += `<table class="table"><thead><tr>
+  // Tableau des résultats (plein largeur du conteneur)
+  html += `<table class="table centered" style="width:100%;"><thead><tr>
     <th>🏆</th><th>Pilote</th><th>Classe</th><th>Voiture</th><th>⏱️ Meilleur</th><th>📊 Moyenne</th><th>🔄 Tours</th><th>⛽ Pits</th><th>🚀 V.Max</th><th>🏁 Statut</th>
   </tr></thead><tbody>`;
   

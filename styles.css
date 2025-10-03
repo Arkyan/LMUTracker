@@ -242,6 +242,12 @@ input[type=text]:focus,select:focus{
   background:rgba(96,165,250,0.05);
 }
 
+/* Variante: tableau centré */
+.table.centered th,
+.table.centered td{
+  text-align:center;
+}
+
 /* Séparateurs de classes */
 .table .class-separator td {
   border-bottom: 2px solid rgba(255,255,255,0.2) !important;

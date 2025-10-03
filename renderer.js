@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', function() {
       'LMUXMLParser', 
       'LMUStatsCalculator',
       'LMURenderEngine',
+      'LMUCacheManager',
       'LMUStorage',
       'LMUNavigation',
       'LMUFileManager',
@@ -57,6 +58,7 @@ function initializeApp() {
   console.log('- LMUXMLParser:', !!window.LMUXMLParser);
   console.log('- LMUStatsCalculator:', !!window.LMUStatsCalculator);
   console.log('- LMURenderEngine:', !!window.LMURenderEngine);
+  console.log('- LMUCacheManager:', !!window.LMUCacheManager);
   console.log('- LMUStorage:', !!window.LMUStorage);
   console.log('- LMUNavigation:', !!window.LMUNavigation);
   console.log('- LMUFileManager:', !!window.LMUFileManager);
@@ -85,8 +87,46 @@ function initializeApp() {
       console.error('Module LMUFileManager non disponible');
     }
     
+    // Restaurer l'historique depuis localStorage si disponible (évite le flash)
+    try {
+      const cached = localStorage.getItem('lmu.cachedHistoryHTML');
+      if (cached) {
+        const container = document.getElementById('results');
+        if (container) {
+          container.innerHTML = cached;
+          if (window.LMUFileManager && window.LMUFileManager.setupCardEvents) {
+            window.LMUFileManager.setupCardEvents(container);
+          }
+        }
+      }
+    } catch (_) {}
+
     // Gérer la navigation basée sur le hash de l'URL
     handleUrlHash();
+    
+    // Effectuer le scan initial si un dossier est configuré
+    performInitialScan();
+
+    // Ecouter les retours/avancées navigateur pour SPA
+    window.addEventListener('popstate', (ev) => {
+      const state = ev.state;
+      if (!state) {
+        // Si pas d'état, tenter restauration de l'historique
+        if (window.LMUFileManager && window.LMUFileManager.restoreHistoryFromCache) {
+          window.LMUFileManager.restoreHistoryFromCache();
+        }
+        return;
+      }
+      if (state.type === 'history') {
+        if (window.LMUFileManager && window.LMUFileManager.restoreHistoryFromCache) {
+          window.LMUFileManager.restoreHistoryFromCache();
+        }
+      } else if (state.type === 'session' && state.filePath) {
+        if (window.LMUFileManager && window.LMUFileManager.renderSessionInPlace) {
+          window.LMUFileManager.renderSessionInPlace(state.filePath);
+        }
+      }
+    });
     
     console.log('LMU Tracker initialisé avec succès !');
   } catch (error) {
@@ -105,6 +145,31 @@ function handleUrlHash() {
       window.LMUNavigation.switchView(hash);
     }
   }
+}
+
+// Effectuer le scan initial au lancement
+function performInitialScan() {
+  // Attendre un peu que tous les modules soient complètement initialisés
+  setTimeout(() => {
+    try {
+      const folderPath = window.LMUStorage ? window.LMUStorage.getConfiguredResultsFolder() : '';
+      const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+      
+      console.log('Scan initial - Dossier configuré:', folderPath);
+      console.log('Scan initial - Pilote configuré:', driverName);
+      
+      if (folderPath && folderPath.trim() !== '') {
+        console.log('Lancement du scan initial...');
+        if (window.LMUFileManager && window.LMUFileManager.scanConfiguredFolder) {
+          window.LMUFileManager.scanConfiguredFolder();
+        }
+      } else {
+        console.log('Aucun dossier configuré, pas de scan initial');
+      }
+    } catch (error) {
+      console.warn('Erreur lors du scan initial:', error);
+    }
+  }, 500); // Délai pour s'assurer que tous les modules sont prêts
 }
 
 // Fonctions de compatibilité pour l'ancien code
@@ -174,14 +239,3 @@ function syncGlobalState() {
 
 // Appeler la synchronisation régulièrement
 setInterval(syncGlobalState, 1000);
-
-// Tentative de chargement initial des paramètres et scan
-try {
-  setTimeout(() => {
-    loadSavedFolder();
-    loadSavedDriverName();
-    scanConfiguredFolder();
-  }, 100);
-} catch (error) {
-  console.warn('Erreur lors du chargement initial:', error);
-}

@@ -10,17 +10,35 @@
   if (!container) return;
   
   const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+  const lastScannedFiles = window.LMUFileManager ? window.LMUFileManager.getLastScannedFiles() : null;
+  const selectedCarClass = window.LMUNavigation ? window.LMUNavigation.getSelectedCarClass() : 'Hyper';
   
-  if (!driverName) {
-    container.innerHTML = generateEmptyProfileContent();
-    return;
+  // Paramètres pour le cache
+  const cacheParams = {
+    driverName,
+    filesLength: lastScannedFiles?.length || 0,
+    selectedCarClass
+  };
+  
+  // Vérifier le cache d'abord
+  if (window.LMUCacheManager) {
+    const cachedContent = window.LMUCacheManager.getCachedContent('profile', cacheParams);
+    if (cachedContent) {
+      container.innerHTML = cachedContent;
+      return;
+    }
   }
   
+  if (!driverName) {
+    const emptyContent = generateEmptyProfileContent();
+    container.innerHTML = emptyContent;
+    // Pas besoin de cacher le contenu vide
+    return;
+  }
+
   // Calculer les statistiques depuis les sessions scannées (avec cache)
-  const lastScannedFiles = window.LMUFileManager ? window.LMUFileManager.getLastScannedFiles() : null;
   const stats = window.LMUStatsCalculator ? 
     window.LMUStatsCalculator.getCachedDriverStats(driverName, lastScannedFiles) : null;
-  const selectedCarClass = window.LMUNavigation ? window.LMUNavigation.getSelectedCarClass() : 'Hyper';
   const trackStats = window.LMUStatsCalculator ? 
     window.LMUStatsCalculator.getCachedTrackStats(driverName, lastScannedFiles, selectedCarClass) : {};
   
@@ -29,6 +47,11 @@
   html += generateRecentSessionsSection(stats);
   
   container.innerHTML = html;
+  
+  // Mettre en cache le contenu généré
+  if (window.LMUCacheManager) {
+    window.LMUCacheManager.setCachedContent('profile', html, cacheParams);
+  }
 }
 
 // Générer le contenu pour un profil vide (pas de pilote configuré)

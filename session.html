@@ -13,7 +13,7 @@
   <header class="app-header">
     <div class="brand">🏁 LMU Tracker — Session</div>
     <nav class="nav">
-      <a href="index.html#history" class="nav-btn">⬅️ Retour</a>
+      <a href="#" id="backBtn" class="nav-btn">⬅️ Retour</a>
     </nav>
   </header>
   <main class="app-main">
@@ -28,5 +28,25 @@
   
   <!-- Script de la page session -->
   <script src="session.js"></script>
+  <script>
+    // Bouton retour sans rechargement: revient à la page précédente si possible
+    (function(){
+      const btn = document.getElementById('backBtn');
+      if (!btn) return;
+      btn.addEventListener('click', function(e){
+        e.preventDefault();
+        try {
+          if (window.history && window.history.length > 1) {
+            window.history.back();
+          } else {
+            // Fallback si pas d'historique: aller vers l'historique sans déclencher de scan
+            window.location.href = 'index.html#history';
+          }
+        } catch (_) {
+          window.location.href = 'index.html#history';
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
