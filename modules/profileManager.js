@@ -5,7 +5,7 @@
 
 (function() {
   // Version UI pour invalider le cache du profil quand la structure change
-  const UI_PROFILE_VERSION = 3;
+  const UI_PROFILE_VERSION = 4;
   // Générer le contenu complet du profil pilote
   function generateProfileContent() {
   const container = document.getElementById('profileContent');
@@ -49,7 +49,6 @@
   
   let html = generateWelcomeSection(driverName, stats);
   html += generateTrackPerformanceSection(trackStats, selectedCarClass, lastScannedFiles);
-  html += generateCarClassPerformanceSection(vehicleStatsByClass);
   html += generateRecentSessionsSection(stats);
   
   container.innerHTML = html;

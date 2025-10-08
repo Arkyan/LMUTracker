@@ -128,6 +128,17 @@ async function initializeApp() {
             window.LMUProfileManager.generateProfileContent();
           }, 150);
         }
+        // Rafraîchir aussi les vues Voitures / Détail véhicule si elles sont affichées
+        const current = window.LMUNavigation && typeof window.LMUNavigation.getCurrentView === 'function'
+          ? window.LMUNavigation.getCurrentView() : '';
+        clearTimeout(window.__lmu_reRenderViewTimer);
+        window.__lmu_reRenderViewTimer = setTimeout(() => {
+          if (current === 'vehicles' || current === 'vehicleDetail') {
+            if (window.LMUNavigation && typeof window.LMUNavigation.switchView === 'function') {
+              window.LMUNavigation.switchView(current);
+            }
+          }
+        }, 150);
       });
     } catch (_) {}
 

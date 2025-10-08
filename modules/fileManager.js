@@ -15,7 +15,8 @@ let lastSession = null; // session extraite du fichier affiché
     // Demande: 48 par lot
     pageSize: 48,
     title: 'Sessions trouvées',
-    cacheParams: null
+    cacheParams: null,
+    filter: 'all' // all | race | qual | practice
   };
 
 // Éléments DOM
@@ -149,7 +150,8 @@ function displayScannedFiles(files, title, isNewScan = true) {
     driverName,
     filesLength: files.length,
     folderPath,
-    title
+    title,
+    filter: historyState.filter
   };
   historyState.cacheParams = cacheParams;
   
@@ -190,10 +192,12 @@ function displayScannedFiles(files, title, isNewScan = true) {
   const container = document.getElementById('results');
   if (!container) return;
   
-  // Rendre le squelette (header + grille + bouton 'Charger plus')
+  // Rendre le squelette (header + grille + bouton 'Charger plus' + filtres)
   renderHistorySkeleton(container, title);
-  // Rendre les cartes du lot fourni
-  appendHistoryCards(files);
+  // Accumuler les fichiers parsés et n'afficher que ceux correspondant au filtre
+  accumulateParsedBatch(files);
+  const filtered = filterFilesForHistory(files);
+  appendHistoryCards(filtered);
   updateLoadMoreVisibility();
 
   // Auto-chargement du profil au démarrage (une seule fois)
@@ -215,10 +219,19 @@ function displayScannedFiles(files, title, isNewScan = true) {
 
 // Rendre l'entête et la grille vide + bouton 'Charger plus'
 function renderHistorySkeleton(container, title) {
+  const isActive = (k) => historyState.filter === k ? 'background:var(--brand);color:#fff;' : 'background:var(--panel);color:var(--text);';
   const skeleton = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
       <h2 style="margin:0;">${title}</h2>
-      <button class="btn" onclick="manualRescan()" style="font-size:12px;padding:6px 12px;">🔄 Actualiser</button>
+      <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;">
+        <div class="row" style="gap:6px;">
+          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('all')}" onclick="setHistoryFilter('all')">Tous</button>
+          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('race')}" onclick="setHistoryFilter('race')">🏁 Course</button>
+          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('qual')}" onclick="setHistoryFilter('qual')">⏱️ Qualif</button>
+          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('practice')}" onclick="setHistoryFilter('practice')">🧪 Essais</button>
+        </div>
+        <button class="btn" onclick="manualRescan()" style="font-size:12px;padding:6px 12px;">🔄 Actualiser</button>
+      </div>
     </div>
     <div id="historyGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>
     <div id="historyLoadMore" style="margin-top:16px;text-align:center;">
@@ -246,17 +259,70 @@ function renderNextHistoryBatch() {
   window.lmuAPI.parseLmuFiles(nextBatchPaths).then(parseRes => {
     if (parseRes && !parseRes.canceled) {
       const files = parseRes.files || [];
-      appendHistoryCards(files);
+      accumulateParsedBatch(files);
+      const filtered = filterFilesForHistory(files);
+      appendHistoryCards(filtered);
       historyState.renderedCount = end;
     }
     updateLoadMoreVisibility();
   }).catch(() => updateLoadMoreVisibility());
 }
 
+// Accumuler les fichiers parsés (tous, quel que soit le filtre UI)
+function accumulateParsedBatch(files) {
+  try {
+    if (!Array.isArray(lastScannedFiles)) lastScannedFiles = [];
+    const existing = new Map(lastScannedFiles.map(f => [f.filePath, true]));
+    for (const f of files) {
+      if (f && f.filePath && !existing.has(f.filePath)) {
+        lastScannedFiles.push(f);
+        existing.set(f.filePath, true);
+      }
+    }
+  } catch (_) {}
+}
+
+// Déterminer le type de session d'un fichier parsé
+function getFileSessionType(file) {
+  try {
+    const rr = window.LMUXMLParser ? window.LMUXMLParser.getRaceResultsRoot(file.parsed) : null;
+    const picked = rr && window.LMUXMLParser ? window.LMUXMLParser.pickSession(rr) : null;
+    const name = (picked && picked.name || '').toLowerCase();
+    if (!name) return 'unknown';
+    if (name.includes('race')) return 'race';
+    if (name.includes('qual')) return 'qual';
+    if (name.includes('practice') || name.includes('practise') || name.includes('warm')) return 'practice';
+    return 'unknown';
+  } catch (_) { return 'unknown'; }
+}
+
+// Filtrer une liste (lot) selon le filtre courant
+function filterFilesForHistory(list) {
+  if (historyState.filter === 'all') return list;
+  const want = historyState.filter;
+  const out = [];
+  for (const f of list) {
+    const t = getFileSessionType(f);
+    if (t === want) out.push(f);
+  }
+  return out;
+}
+
 function appendHistoryCards(files) {
   const container = document.getElementById('results');
   const grid = document.getElementById('historyGrid');
   if (!container || !grid) return;
+  // Fusionner ce lot dans la liste globale pour que les stats/profil incluent ces sessions
+  try {
+    if (!Array.isArray(lastScannedFiles)) lastScannedFiles = [];
+    const existing = new Map(lastScannedFiles.map(f => [f.filePath, true]));
+    for (const f of files) {
+      if (f && f.filePath && !existing.has(f.filePath)) {
+        lastScannedFiles.push(f);
+        existing.set(f.filePath, true);
+      }
+    }
+  } catch (_) {}
   const cards = files.map(file => window.LMURenderEngine ? window.LMURenderEngine.generateSessionCard(file) : '').join('');
   const temp = document.createElement('div');
   temp.innerHTML = cards;
@@ -265,12 +331,27 @@ function appendHistoryCards(files) {
   setupCardEvents(grid);
   // Cache
   try {
+    // Mettre à jour les params de cache avec le nouveau total courant
+    if (historyState && historyState.cacheParams) {
+      historyState.cacheParams.filesLength = Array.isArray(lastScannedFiles) ? lastScannedFiles.length : (historyState.cacheParams.filesLength || 0);
+    }
     const html = container.innerHTML;
     if (window.LMUCacheManager) {
       window.LMUCacheManager.setCachedContent('history', html, historyState.cacheParams);
     }
     localStorage.setItem('lmu.cachedHistoryHTML', html);
     localStorage.setItem('lmu.cachedHistoryMeta', JSON.stringify(historyState.cacheParams));
+  } catch (_) {}
+  // Invalider caches de stats/vues dépendantes afin d'inclure les nouveaux fichiers parsés
+  try {
+    if (window.LMUStatsCalculator && window.LMUStatsCalculator.invalidateCache) {
+      window.LMUStatsCalculator.invalidateCache();
+    }
+    if (window.LMUCacheManager && window.LMUCacheManager.invalidateCache) {
+      window.LMUCacheManager.invalidateCache('profile');
+      window.LMUCacheManager.invalidateCache('vehicles');
+      window.LMUCacheManager.invalidateCache('vehicleDetail');
+    }
   } catch (_) {}
   // Notifier le reste de l'app qu'un rendu d'historique a eu lieu (utile pour le profil)
   try {
@@ -283,12 +364,28 @@ function updateLoadMoreVisibility() {
   const btn = document.getElementById('btnLoadMoreHistory');
   const loadMoreWrap = document.getElementById('historyLoadMore');
   if (!btn || !loadMoreWrap) return;
-  const hasMore = historyState.renderedCount < historyState.sortedFiles.length;
+  const hasMore = historyState.renderedCount < historyState.filesMetaSorted.length;
   if (!hasMore) {
     loadMoreWrap.style.display = 'none';
   } else {
     loadMoreWrap.style.display = '';
   }
+}
+
+// Changer le filtre et re-rendre la grille avec les fichiers déjà parsés
+function setHistoryFilter(filter) {
+  historyState.filter = filter;
+  const container = document.getElementById('results');
+  if (!container) return;
+  // Recréer le header (pour l'état actif des boutons)
+  renderHistorySkeleton(container, historyState.title || 'Sessions trouvées');
+  const grid = document.getElementById('historyGrid');
+  if (!grid) return;
+  // Filtrer sur l'ensemble des fichiers parsés à ce stade
+  const list = Array.isArray(lastScannedFiles) ? lastScannedFiles.slice() : [];
+  const filtered = filterFilesForHistory(list);
+  appendHistoryCards(filtered);
+  updateLoadMoreVisibility();
 }
 
 // Handler global pour le bouton 'Charger plus'
@@ -477,6 +574,8 @@ if (typeof window !== 'undefined') {
   };
   // Exposer loadMoreHistory pour l'onclick du bouton
   window.loadMoreHistory = loadMoreHistory;
+  // Exposer le filtre pour l'onclick des boutons
+  window.setHistoryFilter = setHistoryFilter;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
