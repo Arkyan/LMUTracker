@@ -10,6 +10,20 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+  <!-- Overlay de préchargement (chargement complet avant UI) -->
+  <div id="startupOverlay" style="position:fixed;inset:0;background:linear-gradient(180deg,#0b1020,#0b0f17);display:none;z-index:9999;color:#e5e7eb;">
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(640px,90vw);text-align:center;">
+      <div style="display:flex;justify-content:center;align-items:center;gap:12px;margin-bottom:12px;">
+        <img src="LMUTrackerLogo.webp" alt="Logo" style="width:40px;height:40px;border-radius:8px;"/>
+        <div style="font-weight:700;font-size:20px;background:linear-gradient(135deg,var(--brand),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent;">LMU Tracker</div>
+      </div>
+      <div id="startupText" class="muted" style="margin-bottom:10px;">Préparation des sessions…</div>
+      <div style="height:10px;background:rgba(255,255,255,0.08);border-radius:8px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06);">
+        <div id="startupProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--brand),var(--accent));transition:width .15s ease;"></div>
+      </div>
+      <div id="startupCounter" class="muted" style="margin-top:8px;font-size:12px;opacity:0.85;">0 / 0</div>
+    </div>
+  </div>
   <header class="app-header">
     <div class="brand">
       <img src="LMUTrackerLogo.webp" alt="LMU Tracker Logo" class="brand-logo">
@@ -46,25 +60,125 @@
     </section>
     
     <section id="view-settings" class="view">
-      <div class="card">
-        <h2 style="margin-bottom:16px;font-size:22px;background:linear-gradient(135deg,var(--brand),var(--accent));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">⚙️ Paramètres</h2>
-        
-        <div class="form-row" style="margin-bottom:20px;">
-          <label style="display:block;margin-bottom:8px;font-weight:500;color:var(--text);">🏁 Nom de pilote</label>
-          <input type="text" id="driverName" placeholder="Saisissez votre nom de pilote" style="min-width:300px;" />
-          <small class="muted" style="display:block;margin-top:8px;">Ce nom sera utilisé pour identifier vos statistiques personnelles.</small>
+      <div class="settings-container">
+        <div class="settings-header">
+          <h1 class="settings-title">⚙️ Paramètres</h1>
+          <p class="settings-subtitle">Configurez votre expérience LMU Tracker</p>
         </div>
-        
-        <div class="form-row" style="margin-bottom:20px;">
-          <label style="display:block;margin-bottom:8px;font-weight:500;color:var(--text);">📁 Dossier des résultats (.xml)</label>
-          <div class="row">
-            <input type="text" id="resultsFolder" placeholder="Sélectionner un dossier" readonly />
-            <button id="btnSelectFolder" class="btn">🔍 Parcourir…</button>
+
+        <!-- Section Profil -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <div class="settings-section-icon">👨‍💼</div>
+            <div>
+              <h3 class="settings-section-title">Profil Pilote</h3>
+              <p class="settings-section-desc">Informations personnelles et identification</p>
+            </div>
           </div>
-          <small class="muted" style="display:block;margin-top:8px;">Ce dossier sera utilisé par défaut pour le scan automatique.</small>
+          <div class="settings-section-content">
+            <div class="settings-field">
+              <label class="settings-label" for="driverName">Nom de pilote</label>
+              <input type="text" id="driverName" class="settings-input" placeholder="Votre nom de pilote" />
+              <div class="settings-help">Ce nom sera utilisé pour identifier vos statistiques personnelles dans l'application.</div>
+            </div>
+          </div>
         </div>
-        <div class="form-row">
-          <button id="btnSaveSettings" class="btn primary">💾 Enregistrer</button>
+
+        <!-- Section Données -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <div class="settings-section-icon">📁</div>
+            <div>
+              <h3 class="settings-section-title">Source de Données</h3>
+              <p class="settings-section-desc">Configuration des fichiers de résultats</p>
+            </div>
+          </div>
+          <div class="settings-section-content">
+            <div class="settings-field">
+              <label class="settings-label" for="resultsFolder">Dossier des résultats LMU (.xml)</label>
+              <div class="settings-input-group">
+                <input type="text" id="resultsFolder" class="settings-input" placeholder="Aucun dossier sélectionné" readonly />
+                <button id="btnSelectFolder" class="settings-btn-secondary">
+                  <span>🔍</span>
+                  Parcourir
+                </button>
+              </div>
+              <div class="settings-help">Dossier contenant vos fichiers de résultats LMU (.xml). Ce dossier sera scanné automatiquement.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section Performance -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <div class="settings-section-icon">⚡</div>
+            <div>
+              <h3 class="settings-section-title">Performance et Chargement</h3>
+              <p class="settings-section-desc">Options d'optimisation et de chargement</p>
+            </div>
+          </div>
+          <div class="settings-section-content">
+            <div class="settings-field">
+              <div class="settings-toggle">
+                <input type="checkbox" id="loadAllDirectly" class="settings-checkbox" />
+                <label for="loadAllDirectly" class="settings-toggle-label">
+                  <span class="settings-toggle-switch"></span>
+                  <div class="settings-toggle-content">
+                    <div class="settings-toggle-title">Chargement automatique complet</div>
+                    <div class="settings-toggle-desc">Charge automatiquement toutes les sessions au démarrage avec une barre de progression</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section Filtres -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <div class="settings-section-icon">🎯</div>
+            <div>
+              <h3 class="settings-section-title">Filtres de Sessions</h3>
+              <p class="settings-section-desc">Choisissez les types de sessions à analyser</p>
+            </div>
+          </div>
+          <div class="settings-section-content">
+            <div class="settings-field">
+              <label class="settings-label">Types de sessions à charger</label>
+              <div class="settings-checkbox-group">
+                <div class="settings-checkbox-item">
+                  <input type="checkbox" id="loadTypeRace" class="settings-checkbox" />
+                  <label for="loadTypeRace" class="settings-checkbox-label">
+                    <span class="settings-checkbox-icon">🏁</span>
+                    <span class="settings-checkbox-text">Courses</span>
+                  </label>
+                </div>
+                <div class="settings-checkbox-item">
+                  <input type="checkbox" id="loadTypeQual" class="settings-checkbox" />
+                  <label for="loadTypeQual" class="settings-checkbox-label">
+                    <span class="settings-checkbox-icon">⏱️</span>
+                    <span class="settings-checkbox-text">Qualifications</span>
+                  </label>
+                </div>
+                <div class="settings-checkbox-item">
+                  <input type="checkbox" id="loadTypePractice" class="settings-checkbox" />
+                  <label for="loadTypePractice" class="settings-checkbox-label">
+                    <span class="settings-checkbox-icon">🧪</span>
+                    <span class="settings-checkbox-text">Essais Libres</span>
+                  </label>
+                </div>
+              </div>
+              <div class="settings-help">Ces filtres déterminent quelles sessions seront chargées et analysées pour vos statistiques. Désactiver certains types peut améliorer les performances.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="settings-actions">
+          <button id="btnSaveSettings" class="settings-btn-primary">
+            <span>💾</span>
+            Enregistrer les paramètres
+          </button>
         </div>
       </div>
     </section>

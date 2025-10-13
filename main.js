@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const { XMLParser } = require('fast-xml-parser');
+const os = require('os');
+const { Worker } = require('worker_threads');
 const parserOptions = {
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
@@ -98,6 +100,63 @@ app.whenReady().then(createWindow);
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+// ===========================
+// Cache persistant des sessions parsées
+// ===========================
+const SESSIONS_CACHE_FILE_NAME = 'sessions-cache.v1.json';
+let sessionsCache = null; // { [filePath]: { mtimeMs: number, size: number, parsed: any } }
+let sessionsCacheLoaded = false;
+let sessionsCacheSaveTimer = null;
+
+function getSessionsCachePath() {
+  return path.join(app.getPath('userData'), SESSIONS_CACHE_FILE_NAME);
+}
+
+async function loadSessionsCacheFromDisk() {
+  if (sessionsCacheLoaded && sessionsCache) return sessionsCache;
+  try {
+    const fp = getSessionsCachePath();
+    const content = await fs.readFile(fp, 'utf-8');
+    const json = JSON.parse(content);
+    sessionsCache = json && typeof json === 'object' ? json : {};
+  } catch (_) {
+    sessionsCache = {};
+  } finally {
+    sessionsCacheLoaded = true;
+  }
+  return sessionsCache;
+}
+
+function scheduleSaveSessionsCache() {
+  try { if (sessionsCacheSaveTimer) clearTimeout(sessionsCacheSaveTimer); } catch {}
+  sessionsCacheSaveTimer = setTimeout(async () => {
+    try {
+      const fp = getSessionsCachePath();
+      try { fsSync.mkdirSync(path.dirname(fp), { recursive: true }); } catch {}
+      await fs.writeFile(fp, JSON.stringify(sessionsCache || {}, null, 2), 'utf-8');
+    } catch (_) { /* noop */ }
+  }, 800);
+}
+
+async function getCachedParsedIfFresh(filePath, mtimeMs, size) {
+  await loadSessionsCacheFromDisk();
+  try {
+    const entry = sessionsCache[filePath];
+    if (entry && entry.mtimeMs === mtimeMs && entry.size === size && entry.parsed) {
+      return { filePath, parsed: entry.parsed, mtimeMs, mtimeIso: new Date(mtimeMs).toISOString() };
+    }
+  } catch (_) {}
+  return null;
+}
+
+async function setCachedParsed(filePath, mtimeMs, size, parsed) {
+  await loadSessionsCacheFromDisk();
+  try {
+    sessionsCache[filePath] = { mtimeMs, size, parsed };
+    scheduleSaveSessionsCache();
+  } catch (_) {}
+}
 
 // IPC : ouverture d'un fichier LMU
 ipcMain.handle('open-lmu-file', async () => {
@@ -244,41 +303,197 @@ ipcMain.handle('parse-lmu-files', async (_event, filePaths) => {
     return { canceled: true, error: 'Aucun fichier fourni' };
   }
   try {
-    const parser = new XMLParser(parserOptions);
-    const parsedFiles = [];
-    for (const filePath of filePaths) {
+    // Préparer cache et répartir entre hits et manquants
+    await loadSessionsCacheFromDisk();
+    const cached = [];
+    const toParse = [];
+    for (const fp of filePaths) {
       try {
-        const [content, stat] = await Promise.all([
-          fs.readFile(filePath, 'utf-8'),
-          fs.stat(filePath)
-        ]);
-        const parsed = parser.parse(content);
-        parsedFiles.push({ filePath, parsed, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString() });
-      } catch (err) {
-        try {
-          const stat = await fs.stat(filePath);
-          parsedFiles.push({ filePath, error: String(err), mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString() });
-        } catch {
-          parsedFiles.push({ filePath, error: String(err) });
+        const st = await fs.stat(fp);
+        const hit = await getCachedParsedIfFresh(fp, st.mtimeMs, st.size);
+        if (hit) {
+          cached.push(hit);
+        } else {
+          toParse.push({ filePath: fp, stat: st });
         }
+      } catch (_) {
+        toParse.push({ filePath: fp, stat: null });
       }
     }
-    return { canceled: false, count: parsedFiles.length, files: parsedFiles };
+    let parsedResults = [];
+    if (toParse.length > 0) {
+      const results = await parseFilesWithWorkerPool(toParse.map(t => t.filePath));
+      // Alimenter le cache
+      for (const r of results) {
+        if (r && r.filePath && r.parsed && typeof r.mtimeMs === 'number') {
+          try {
+            const st = await fs.stat(r.filePath);
+            await setCachedParsed(r.filePath, r.mtimeMs, st.size, r.parsed);
+          } catch (_) { /* ignore */ }
+        }
+      }
+      parsedResults = results;
+    }
+    const all = [...cached, ...parsedResults];
+    const byPath = new Map(all.map(x => [x.filePath, x]));
+    const ordered = filePaths.map(fp => byPath.get(fp)).filter(Boolean);
+    return { canceled: false, count: ordered.length, files: ordered };
   } catch (error) {
-    return { canceled: true, error: String(error) };
+    // Fallback: parser côté main avec concurrence limitée si les workers échouent
+    try {
+      const parser = new XMLParser(parserOptions);
+      const CONCURRENCY = Math.min(4, filePaths.length);
+      const out = new Array(filePaths.length);
+      let idx = 0;
+      await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
+        for (;;) {
+          const i = idx++;
+          if (i >= filePaths.length) break;
+          const fp = filePaths[i];
+          try {
+            const [content, stat] = await Promise.all([
+              fs.readFile(fp, 'utf-8'),
+              fs.stat(fp)
+            ]);
+            const parsed = parser.parse(content);
+            out[i] = { filePath: fp, parsed, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString() };
+          } catch (err) {
+            try {
+              const stat = await fs.stat(fp);
+              out[i] = { filePath: fp, error: String(err), mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString() };
+            } catch {
+              out[i] = { filePath: fp, error: String(err) };
+            }
+          }
+        }
+      }));
+      return { canceled: false, count: out.length, files: out };
+    } catch (err2) {
+      return { canceled: true, error: String(error || err2) };
+    }
   }
 });
+
+// ===========================
+// Worker pool pour parsing XML
+// ===========================
+let parseWorkerPool = null;
+
+function resolveWorkerScriptPath() {
+  const candidateDirs = [
+    __dirname,
+    path.join(process.resourcesPath || '', 'app'),
+    process.resourcesPath || ''
+  ].filter(Boolean);
+  for (const dir of candidateDirs) {
+    const p = path.join(dir, 'workers', 'parseWorker.js');
+    if (fsSync.existsSync(p)) return p;
+  }
+  // Dernier recours: chemin relatif standard
+  return path.join(__dirname, 'workers', 'parseWorker.js');
+}
+
+function createWorker(scriptPath) {
+  const worker = new Worker(scriptPath, { argv: [], execArgv: [] });
+  worker._busy = false;
+  worker._current = null;
+  return worker;
+}
+
+function ensureParseWorkerPool() {
+  if (parseWorkerPool) return parseWorkerPool;
+  const size = Math.max(1, Math.min(4, (os.cpus?.() ? os.cpus().length - 0 : 4)));
+  const script = resolveWorkerScriptPath();
+  const workers = Array.from({ length: size }, () => createWorker(script));
+  const queue = [];
+  const idle = new Set(workers);
+
+  for (const w of workers) {
+    w.on('message', (msg) => {
+      const job = w._current;
+      w._busy = false;
+      w._current = null;
+      idle.add(w);
+      try {
+        if (msg && msg.ok && msg.result) {
+          job?.resolve(msg.result);
+        } else if (msg && msg.result) {
+          job?.resolve(msg.result);
+        } else {
+          job?.reject(new Error('Réponse worker invalide'));
+        }
+      } finally {
+        pump();
+      }
+    });
+    w.on('error', (err) => {
+      const job = w._current;
+      w._busy = false;
+      w._current = null;
+      idle.add(w);
+      job?.resolve({ filePath: job?.filePath, error: String(err) });
+      pump();
+    });
+    w.on('exit', (code) => {
+      // Remplacer le worker s'il sort
+      idle.delete(w);
+      const nw = createWorker(script);
+      workers.push(nw);
+      idle.add(nw);
+      nw.on('message', (...args) => w.emit('message', ...args));
+      nw.on('error', (...args) => w.emit('error', ...args));
+      nw.on('exit', (...args) => w.emit('exit', ...args));
+      pump();
+    });
+  }
+
+  function pump() {
+    while (idle.size > 0 && queue.length > 0) {
+      const w = idle.values().next().value;
+      idle.delete(w);
+      const job = queue.shift();
+      w._busy = true;
+      w._current = job;
+      try {
+        w.postMessage({ filePath: job.filePath });
+      } catch (err) {
+        w._busy = false;
+        w._current = null;
+        job.resolve({ filePath: job.filePath, error: String(err) });
+        idle.add(w);
+      }
+    }
+  }
+
+  function run(filePath) {
+    return new Promise((resolve, reject) => {
+      queue.push({ filePath, resolve, reject });
+      pump();
+    });
+  }
+
+  parseWorkerPool = { run };
+  return parseWorkerPool;
+}
+
+async function parseFilesWithWorkerPool(filePaths) {
+  const pool = ensureParseWorkerPool();
+  const tasks = filePaths.map(fp => pool.run(fp));
+  const results = await Promise.all(tasks);
+  return results;
+}
 
 // IPC: ouvrir un fichier par chemin précis (pour la page session)
 ipcMain.handle('open-lmu-file-by-path', async (_event, filePath) => {
   if (!filePath) return { canceled: true, error: 'Aucun chemin fourni' };
   try {
-    const [content, stat] = await Promise.all([
-      fs.readFile(filePath, 'utf-8'),
-      fs.stat(filePath)
-    ]);
+    const stat = await fs.stat(filePath);
+    const hit = await getCachedParsedIfFresh(filePath, stat.mtimeMs, stat.size);
+    if (hit) return { canceled: false, ...hit };
+    const content = await fs.readFile(filePath, 'utf-8');
     const parser = new XMLParser(parserOptions);
     const parsed = parser.parse(content);
+    await setCachedParsed(filePath, stat.mtimeMs, stat.size, parsed);
     return { canceled: false, filePath, parsed, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString() };
   } catch (error) {
     return { canceled: true, error: String(error), filePath };

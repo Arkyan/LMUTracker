@@ -16,7 +16,9 @@ let lastSession = null; // session extraite du fichier affiché
     pageSize: 48,
     title: 'Sessions trouvées',
     cacheParams: null,
-    filter: 'all' // all | race | qual | practice
+    filter: 'all', // all | race | qual | practice
+    isAutoLoading: false,
+    autoLoadBatchCounter: 0
   };
 
 // Éléments DOM
@@ -132,10 +134,27 @@ async function scanConfiguredFolder() {
     container.innerHTML = `<p class="muted">Erreur lors du parsing: ${parseRes.error ?? ''}</p>`;
     return;
   }
-  // Afficher le premier lot
-  displayScannedFiles(parseRes.files || [], `Sessions trouvées`, true);
+    // Afficher le premier lot en respectant les types sélectionnés (Paramètres)
+    try {
+      const loadTypes = window.LMUStorage && window.LMUStorage.loadSelectedLoadTypes ? window.LMUStorage.loadSelectedLoadTypes() : { race: true, qual: true, practice: true };
+      const typeOk = (t) => (t === 'race' && loadTypes.race) || (t === 'qual' && loadTypes.qual) || (t === 'practice' && loadTypes.practice) || (t === 'unknown');
+      const firstFiles = (parseRes.files || []).filter(f => typeOk(getFileSessionType(f)));
+      displayScannedFiles(firstFiles, `Sessions trouvées`, true);
+    } catch (_) {
+      displayScannedFiles(parseRes.files || [], `Sessions trouvées`, true);
+    }
   // Avancer le compteur rendu (lot parsé)
   historyState.renderedCount = firstBatchPaths.length;
+
+  // Si l'option "tout charger" est activée, enchaîner automatiquement les lots restants
+  try {
+    const loadAll = !!(window.LMUStorage && window.LMUStorage.loadLoadAllSessionsDirectly && window.LMUStorage.loadLoadAllSessionsDirectly());
+    if (loadAll) {
+      startAutoLoadProgress();
+      await autoLoadAllBatches();
+      stopAutoLoadProgress();
+    }
+  } catch (_) {}
 }
 
 // Afficher les fichiers scannés
@@ -199,6 +218,11 @@ function displayScannedFiles(files, title, isNewScan = true) {
   const filtered = filterFilesForHistory(files);
   appendHistoryCards(filtered);
   updateLoadMoreVisibility();
+  // Assurer que la barre de progression est masquée au rendu initial
+  try {
+    const wrap = document.getElementById('historyProgressWrap');
+    if (wrap) wrap.style.display = 'none';
+  } catch (_) {}
 
   // Auto-chargement du profil au démarrage (une seule fois)
   // Si on démarre sur la vue profil, qu'un pilote est configuré et que c'est un nouveau scan,
@@ -231,6 +255,13 @@ function renderHistorySkeleton(container, title) {
           <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('practice')}" onclick="setHistoryFilter('practice')">🧪 Essais</button>
         </div>
         <button class="btn" onclick="manualRescan()" style="font-size:12px;padding:6px 12px;">🔄 Actualiser</button>
+        <button class="btn" id="btnLoadAllHistory" onclick="loadAllHistory()" style="font-size:12px;padding:6px 12px;">⚡ Charger tout</button>
+      </div>
+    </div>
+    <div id="historyProgressWrap" style="display:none;margin-bottom:12px;">
+      <div class="muted" id="historyProgressText" style="font-size:12px;margin-bottom:6px;">Chargement…</div>
+      <div style="height:8px;background:var(--panel);border-radius:6px;overflow:hidden;">
+        <div id="historyProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--brand),var(--accent));transition:width .2s ease;"></div>
       </div>
     </div>
     <div id="historyGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>
@@ -239,6 +270,99 @@ function renderHistorySkeleton(container, title) {
     </div>
   `;
   container.innerHTML = skeleton;
+}
+
+// Afficher/mettre à jour la barre de progression
+function updateProgress(current, total) {
+  const wrap = document.getElementById('historyProgressWrap');
+  const bar = document.getElementById('historyProgressBar');
+  const txt = document.getElementById('historyProgressText');
+  if (!wrap || !bar || !txt) return;
+  wrap.style.display = '';
+  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+  bar.style.width = pct + '%';
+  txt.textContent = `Chargement des sessions… ${current}/${total}`;
+  const btn = document.getElementById('btnLoadMoreHistory');
+  const loadMoreWrap = document.getElementById('historyLoadMore');
+  if (loadMoreWrap) loadMoreWrap.style.display = 'none';
+}
+
+function startAutoLoadProgress() {
+  historyState.isAutoLoading = true;
+  historyState.autoLoadBatchCounter = 0;
+  try { window.__lmu_autoLoading = true; } catch (_) {}
+  updateProgress(historyState.renderedCount, historyState.filesMetaSorted.length);
+  try {
+    const btnAll = document.getElementById('btnLoadAllHistory');
+    if (btnAll) btnAll.style.display = 'none';
+  } catch (_) {}
+}
+
+function stopAutoLoadProgress() {
+  const wrap = document.getElementById('historyProgressWrap');
+  if (wrap) wrap.style.display = 'none';
+  updateLoadMoreVisibility();
+  historyState.isAutoLoading = false;
+  try { window.__lmu_autoLoading = false; } catch (_) {}
+  // Réécrire le cache avec l'état final (progress cachée)
+  try {
+    const container = document.getElementById('results');
+    if (container) {
+      const html = container.innerHTML;
+      if (window.LMUCacheManager) {
+        window.LMUCacheManager.setCachedContent('history', html, historyState.cacheParams);
+      }
+      localStorage.setItem('lmu.cachedHistoryHTML', html);
+      localStorage.setItem('lmu.cachedHistoryMeta', JSON.stringify(historyState.cacheParams || {}));
+    }
+  } catch (_) {}
+  // Lancer une invalidation/rafraîchissement final modéré
+  try {
+    if (window.LMUStatsCalculator && window.LMUStatsCalculator.invalidateCache) {
+      window.LMUStatsCalculator.invalidateCache();
+    }
+    if (window.LMUCacheManager && window.LMUCacheManager.invalidateCache) {
+      window.LMUCacheManager.invalidateCache('profile');
+      window.LMUCacheManager.invalidateCache('vehicles');
+      window.LMUCacheManager.invalidateCache('vehicleDetail');
+    }
+    const detail = { rendered: historyState.renderedCount, totalMeta: historyState.filesMetaSorted.length };
+    window.dispatchEvent(new CustomEvent('lmu:history-updated', { detail }));
+  } catch (_) {}
+}
+
+// Charger automatiquement tous les lots restants
+async function autoLoadAllBatches() {
+  const total = historyState.filesMetaSorted.length;
+  const followupBatchSize = 3; // lots plus petits pour fluidifier l'UI
+  while (historyState.renderedCount < total) {
+    const start = historyState.renderedCount;
+    const end = Math.min(start + followupBatchSize, total);
+    const nextBatchPaths = historyState.filesMetaSorted.slice(start, end).map(m => m.filePath);
+    try {
+      const parseRes = await window.lmuAPI.parseLmuFiles(nextBatchPaths);
+      if (parseRes && !parseRes.canceled) {
+          // Filtrer selon les types sélectionnés (Paramètres)
+          let files = parseRes.files || [];
+          try {
+            const loadTypes = window.LMUStorage && window.LMUStorage.loadSelectedLoadTypes ? window.LMUStorage.loadSelectedLoadTypes() : { race: true, qual: true, practice: true };
+            const typeOk = (t) => (t === 'race' && loadTypes.race) || (t === 'qual' && loadTypes.qual) || (t === 'practice' && loadTypes.practice) || (t === 'unknown');
+            files = files.filter(f => typeOk(getFileSessionType(f)));
+          } catch (_) {}
+        accumulateParsedBatch(files);
+        const filtered = filterFilesForHistory(files);
+        appendHistoryCards(filtered);
+        historyState.renderedCount = end;
+        updateProgress(historyState.renderedCount, total);
+      } else {
+        break;
+      }
+    } catch (_) {
+      break;
+    }
+    // Laisser respirer l'UI
+    await new Promise(r => setTimeout(r, 0));
+  }
 }
 
 // Rendre le prochain lot de cartes et mettre à jour le cache/événements
@@ -258,7 +382,13 @@ function renderNextHistoryBatch() {
   // Demander au main process de parser le prochain lot
   window.lmuAPI.parseLmuFiles(nextBatchPaths).then(parseRes => {
     if (parseRes && !parseRes.canceled) {
-      const files = parseRes.files || [];
+        // Filtrer selon les types sélectionnés (Paramètres)
+        let files = parseRes.files || [];
+        try {
+          const loadTypes = window.LMUStorage && window.LMUStorage.loadSelectedLoadTypes ? window.LMUStorage.loadSelectedLoadTypes() : { race: true, qual: true, practice: true };
+          const typeOk = (t) => (t === 'race' && loadTypes.race) || (t === 'qual' && loadTypes.qual) || (t === 'practice' && loadTypes.practice) || (t === 'unknown');
+          files = files.filter(f => typeOk(getFileSessionType(f)));
+        } catch (_) {}
       accumulateParsedBatch(files);
       const filtered = filterFilesForHistory(files);
       appendHistoryCards(filtered);
@@ -335,40 +465,54 @@ function appendHistoryCards(files) {
     if (historyState && historyState.cacheParams) {
       historyState.cacheParams.filesLength = Array.isArray(lastScannedFiles) ? lastScannedFiles.length : (historyState.cacheParams.filesLength || 0);
     }
-    const html = container.innerHTML;
-    if (window.LMUCacheManager) {
-      window.LMUCacheManager.setCachedContent('history', html, historyState.cacheParams);
-    }
-    localStorage.setItem('lmu.cachedHistoryHTML', html);
-    localStorage.setItem('lmu.cachedHistoryMeta', JSON.stringify(historyState.cacheParams));
-  } catch (_) {}
-  // Invalider caches de stats/vues dépendantes afin d'inclure les nouveaux fichiers parsés
-  try {
-    if (window.LMUStatsCalculator && window.LMUStatsCalculator.invalidateCache) {
-      window.LMUStatsCalculator.invalidateCache();
-    }
-    if (window.LMUCacheManager && window.LMUCacheManager.invalidateCache) {
-      window.LMUCacheManager.invalidateCache('profile');
-      window.LMUCacheManager.invalidateCache('vehicles');
-      window.LMUCacheManager.invalidateCache('vehicleDetail');
+    if (!historyState.isAutoLoading) {
+      const html = container.innerHTML;
+      if (window.LMUCacheManager) {
+        window.LMUCacheManager.setCachedContent('history', html, historyState.cacheParams);
+      }
+      localStorage.setItem('lmu.cachedHistoryHTML', html);
+      localStorage.setItem('lmu.cachedHistoryMeta', JSON.stringify(historyState.cacheParams));
     }
   } catch (_) {}
-  // Notifier le reste de l'app qu'un rendu d'historique a eu lieu (utile pour le profil)
+  // Invalidations/évènements: throttle pendant auto-chargement
   try {
-    const detail = { rendered: historyState.renderedCount, totalMeta: historyState.filesMetaSorted.length };
-    window.dispatchEvent(new CustomEvent('lmu:history-updated', { detail }));
+    const totalMeta = historyState.filesMetaSorted.length;
+    let shouldNotify = true;
+    if (historyState.isAutoLoading) {
+      historyState.autoLoadBatchCounter = (historyState.autoLoadBatchCounter || 0) + 1;
+      // Ne notifier et invalider que toutes les 3 batches, ou à la fin
+      shouldNotify = (historyState.autoLoadBatchCounter % 3 === 0) || (historyState.renderedCount >= totalMeta);
+    }
+    if (shouldNotify) {
+      if (window.LMUStatsCalculator && window.LMUStatsCalculator.invalidateCache) {
+        window.LMUStatsCalculator.invalidateCache();
+      }
+      if (window.LMUCacheManager && window.LMUCacheManager.invalidateCache) {
+        window.LMUCacheManager.invalidateCache('profile');
+        window.LMUCacheManager.invalidateCache('vehicles');
+        window.LMUCacheManager.invalidateCache('vehicleDetail');
+      }
+      const detail = { rendered: historyState.renderedCount, totalMeta };
+      window.dispatchEvent(new CustomEvent('lmu:history-updated', { detail }));
+    }
   } catch (_) {}
 }
 
 function updateLoadMoreVisibility() {
   const btn = document.getElementById('btnLoadMoreHistory');
   const loadMoreWrap = document.getElementById('historyLoadMore');
+  const btnAll = document.getElementById('btnLoadAllHistory');
   if (!btn || !loadMoreWrap) return;
   const hasMore = historyState.renderedCount < historyState.filesMetaSorted.length;
-  if (!hasMore) {
+  if (historyState.isAutoLoading) {
     loadMoreWrap.style.display = 'none';
+    if (btnAll) btnAll.style.display = 'none';
+  } else if (!hasMore) {
+    loadMoreWrap.style.display = 'none';
+    if (btnAll) btnAll.style.display = 'none';
   } else {
     loadMoreWrap.style.display = '';
+    if (btnAll) btnAll.style.display = '';
   }
 }
 
@@ -391,6 +535,19 @@ function setHistoryFilter(filter) {
 // Handler global pour le bouton 'Charger plus'
 function loadMoreHistory() {
   renderNextHistoryBatch();
+}
+
+// Handler global pour le bouton 'Charger tout'
+async function loadAllHistory() {
+  if (historyState.isAutoLoading) return;
+  const total = historyState.filesMetaSorted.length;
+  if (historyState.renderedCount >= total) {
+    updateLoadMoreVisibility();
+    return;
+  }
+  startAutoLoadProgress();
+  await autoLoadAllBatches();
+  stopAutoLoadProgress();
 }
 
 // Configurer les événements sur les cartes de session
@@ -574,6 +731,7 @@ if (typeof window !== 'undefined') {
   };
   // Exposer loadMoreHistory pour l'onclick du bouton
   window.loadMoreHistory = loadMoreHistory;
+  window.loadAllHistory = loadAllHistory;
   // Exposer le filtre pour l'onclick des boutons
   window.setHistoryFilter = setHistoryFilter;
 }

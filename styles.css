@@ -337,3 +337,396 @@ pre{
 ::-webkit-scrollbar-track{background:var(--panel)}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px}
 ::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ====== STYLES MODERNES POUR LES PARAMÈTRES ====== */
+
+.settings-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.settings-header {
+  text-align: center;
+  margin-bottom: 40px;
+  padding: 32px 24px;
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-md);
+}
+
+.settings-title {
+  font-size: 32px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--brand), var(--accent));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.settings-subtitle {
+  color: var(--muted);
+  font-size: 16px;
+  margin: 0;
+}
+
+.settings-section {
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-md);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.settings-section:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: rgba(96, 165, 250, 0.3);
+}
+
+.settings-section-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.1), rgba(167, 139, 250, 0.1));
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-section-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, var(--accent), var(--brand));
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+.settings-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 4px 0;
+}
+
+.settings-section-desc {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.settings-section-content {
+  padding: 24px;
+}
+
+.settings-field {
+  margin-bottom: 0;
+}
+
+.settings-field:not(:last-child) {
+  margin-bottom: 24px;
+}
+
+.settings-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.settings-input {
+  width: 100%;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  color: var(--text);
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.settings-input-group {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.settings-input-group .settings-input {
+  flex: 1;
+}
+
+.settings-btn-secondary {
+  background: var(--panel-light);
+  border: 2px solid var(--border);
+  color: var(--text);
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.settings-btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.settings-help {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+/* Toggle moderne */
+.settings-toggle {
+  position: relative;
+}
+
+.settings-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  padding: 16px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.settings-toggle-label:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-checkbox {
+  display: none;
+}
+
+.settings-toggle-switch {
+  width: 48px;
+  height: 24px;
+  background: var(--border);
+  border-radius: 12px;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.settings-toggle-switch::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: var(--text);
+  border-radius: 10px;
+  top: 2px;
+  left: 2px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.settings-checkbox:checked + .settings-toggle-label .settings-toggle-switch {
+  background: linear-gradient(135deg, var(--accent), var(--brand));
+}
+
+.settings-checkbox:checked + .settings-toggle-label .settings-toggle-switch::after {
+  transform: translateX(24px);
+  background: #fff;
+}
+
+.settings-toggle-content {
+  flex: 1;
+}
+
+.settings-toggle-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.settings-toggle-desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* Groupe de checkboxes modernes */
+.settings-checkbox-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.settings-checkbox-item {
+  position: relative;
+}
+
+.settings-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-checkbox-label::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, var(--accent), var(--brand));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.settings-checkbox-label:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-checkbox:checked + .settings-checkbox-label {
+  border-color: var(--accent);
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.settings-checkbox:checked + .settings-checkbox-label::before {
+  opacity: 0.1;
+}
+
+.settings-checkbox-icon {
+  font-size: 18px;
+  z-index: 1;
+  position: relative;
+}
+
+.settings-checkbox-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  z-index: 1;
+  position: relative;
+}
+
+/* Actions des paramètres */
+.settings-actions {
+  display: flex;
+  justify-content: center;
+  padding: 32px 0;
+}
+
+.settings-btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--brand));
+  border: none;
+  color: #fff;
+  padding: 16px 32px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 12px var(--accent-glow);
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s, height 0.4s;
+}
+
+.settings-btn-primary:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.settings-btn-primary:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 20px var(--accent-glow);
+}
+
+.settings-btn-primary:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Responsive pour les paramètres */
+@media (max-width: 768px) {
+  .settings-container {
+    padding: 0 16px;
+  }
+  
+  .settings-section-header {
+    padding: 20px;
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
+  }
+  
+  .settings-section-content {
+    padding: 20px;
+  }
+  
+  .settings-input-group {
+    flex-direction: column;
+  }
+  
+  .settings-checkbox-group {
+    grid-template-columns: 1fr;
+  }
+  
+  .settings-title {
+    font-size: 24px;
+  }
+}

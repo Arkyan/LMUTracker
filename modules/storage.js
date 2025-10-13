@@ -15,13 +15,19 @@
 let resultsFolderInput = null;
 let driverNameInput = null;
 let currentFolderSpan = null;
+let loadAllDirectlyCheckbox = null;
+let loadTypeRaceCheckbox = null;
+let loadTypeQualCheckbox = null;
+let loadTypePracticeCheckbox = null;
 let btnSaveSettings = null;
 
 // Cache en mémoire des paramètres persistés
 let persistedSettings = {
   resultsFolder: '',
   driverName: '',
-  selectedCarClass: 'Hyper'
+  selectedCarClass: 'Hyper',
+  loadAllSessionsDirectly: false,
+  loadTypes: { race: true, qual: true, practice: true }
 };
 
 // Utilitaires: lire/écrire via l'API preload (IPC)
@@ -52,6 +58,10 @@ async function initStorage() {
   driverNameInput = document.getElementById('driverName');
   currentFolderSpan = document.getElementById('currentFolder');
   btnSaveSettings = document.getElementById('btnSaveSettings');
+  loadAllDirectlyCheckbox = document.getElementById('loadAllDirectly');
+  loadTypeRaceCheckbox = document.getElementById('loadTypeRace');
+  loadTypeQualCheckbox = document.getElementById('loadTypeQual');
+  loadTypePracticeCheckbox = document.getElementById('loadTypePractice');
   
   // Charger les valeurs sauvegardées (persistées JSON)
   await ensureSettingsLoaded();
@@ -89,6 +99,20 @@ function loadSelectedCarClass() {
   return persistedSettings.selectedCarClass || 'Hyper';
 }
 
+// Charger l'option de chargement direct
+function loadLoadAllSessionsDirectly() {
+  return !!persistedSettings.loadAllSessionsDirectly;
+}
+
+function loadSelectedLoadTypes() {
+  const lt = persistedSettings.loadTypes || {};
+  return {
+    race: lt.race !== false,
+    qual: lt.qual !== false,
+    practice: lt.practice !== false
+  };
+}
+
 // Charger tous les paramètres sauvegardés
 function loadSavedSettings() {
   // Compat: conserve la signature (utilisée ailleurs) mais lit depuis le cache
@@ -104,7 +128,9 @@ function loadSavedSettings() {
   return {
     folder: loadSavedFolder(),
     driverName: loadSavedDriverName(),
-    selectedCarClass: selectedClass
+    selectedCarClass: selectedClass,
+    loadAllSessionsDirectly: loadLoadAllSessionsDirectly(),
+    loadTypes: loadSelectedLoadTypes()
   };
 }
 
@@ -136,14 +162,35 @@ function saveSelectedCarClass(carClass) {
   persistedSettings.selectedCarClass = carClass || 'Hyper';
 }
 
+// Sauvegarder l'option de chargement direct
+function saveLoadAllSessionsDirectly(value) {
+  persistedSettings.loadAllSessionsDirectly = !!value;
+}
+
+function saveSelectedLoadTypes(types) {
+  persistedSettings.loadTypes = {
+    race: !!types?.race,
+    qual: !!types?.qual,
+    practice: !!types?.practice
+  };
+}
+
 // Sauvegarder tous les paramètres
 async function saveSettings() {
   const folderValue = resultsFolderInput ? resultsFolderInput.value.trim() : '';
   const driverValue = driverNameInput ? driverNameInput.value.trim() : '';
+  const loadAllValue = loadAllDirectlyCheckbox ? !!loadAllDirectlyCheckbox.checked : false;
+  const typesValue = {
+    race: loadTypeRaceCheckbox ? !!loadTypeRaceCheckbox.checked : true,
+    qual: loadTypeQualCheckbox ? !!loadTypeQualCheckbox.checked : true,
+    practice: loadTypePracticeCheckbox ? !!loadTypePracticeCheckbox.checked : true
+  };
   
   // Sauvegarder les valeurs
   saveResultsFolder(folderValue);
   saveDriverName(driverValue);
+  saveLoadAllSessionsDirectly(loadAllValue);
+  saveSelectedLoadTypes(typesValue);
   await writePersistedSettings(persistedSettings);
   
   // Recharger les valeurs pour mettre à jour l'affichage
@@ -211,13 +258,15 @@ function getAllSettings() {
   return {
     resultsFolder: getConfiguredResultsFolder(),
     driverName: getConfiguredDriverName(),
-    selectedCarClass: loadSelectedCarClass()
+    selectedCarClass: loadSelectedCarClass(),
+    loadAllSessionsDirectly: loadLoadAllSessionsDirectly(),
+    loadTypes: loadSelectedLoadTypes()
   };
 }
 
 // Réinitialiser tous les paramètres
 async function resetSettings() {
-  persistedSettings = { resultsFolder: '', driverName: '', selectedCarClass: 'Hyper' };
+  persistedSettings = { resultsFolder: '', driverName: '', selectedCarClass: 'Hyper', loadAllSessionsDirectly: false, loadTypes: { race: true, qual: true, practice: true } };
   await writePersistedSettings(persistedSettings);
   applySettingsToUI();
   
@@ -235,7 +284,9 @@ async function ensureSettingsLoaded() {
     persistedSettings = {
       resultsFolder: fromDisk.resultsFolder || '',
       driverName: fromDisk.driverName || '',
-      selectedCarClass: fromDisk.selectedCarClass || 'Hyper'
+      selectedCarClass: fromDisk.selectedCarClass || 'Hyper',
+      loadAllSessionsDirectly: !!fromDisk.loadAllSessionsDirectly,
+      loadTypes: fromDisk.loadTypes || { race: true, qual: true, practice: true }
     };
   } else {
     // Migration depuis localStorage si présent
@@ -243,11 +294,11 @@ async function ensureSettingsLoaded() {
       const lsFolder = localStorage.getItem(STORAGE_KEYS.RESULTS_FOLDER) || '';
       const lsDriver = localStorage.getItem(STORAGE_KEYS.DRIVER_NAME) || '';
       const lsClass = localStorage.getItem(STORAGE_KEYS.SELECTED_CAR_CLASS) || 'Hyper';
-      persistedSettings = { resultsFolder: lsFolder, driverName: lsDriver, selectedCarClass: lsClass };
+  persistedSettings = { resultsFolder: lsFolder, driverName: lsDriver, selectedCarClass: lsClass, loadAllSessionsDirectly: false, loadTypes: { race: true, qual: true, practice: true } };
       await writePersistedSettings(persistedSettings);
     } catch (_) {
       // Fallback par défaut
-      persistedSettings = { resultsFolder: '', driverName: '', selectedCarClass: 'Hyper' };
+  persistedSettings = { resultsFolder: '', driverName: '', selectedCarClass: 'Hyper', loadAllSessionsDirectly: false, loadTypes: { race: true, qual: true, practice: true } };
       await writePersistedSettings(persistedSettings);
     }
   }
@@ -257,6 +308,10 @@ function applySettingsToUI() {
   if (resultsFolderInput) resultsFolderInput.value = persistedSettings.resultsFolder || '';
   if (driverNameInput) driverNameInput.value = persistedSettings.driverName || '';
   if (currentFolderSpan) currentFolderSpan.textContent = persistedSettings.resultsFolder ? `Dossier par défaut: ${persistedSettings.resultsFolder}` : '';
+  if (loadAllDirectlyCheckbox) loadAllDirectlyCheckbox.checked = !!persistedSettings.loadAllSessionsDirectly;
+  if (loadTypeRaceCheckbox) loadTypeRaceCheckbox.checked = persistedSettings.loadTypes?.race !== false;
+  if (loadTypeQualCheckbox) loadTypeQualCheckbox.checked = persistedSettings.loadTypes?.qual !== false;
+  if (loadTypePracticeCheckbox) loadTypePracticeCheckbox.checked = persistedSettings.loadTypes?.practice !== false;
 }
 
 // Export des fonctions
@@ -272,6 +327,10 @@ if (typeof window !== 'undefined') {
     saveResultsFolder,
     saveDriverName,
     saveSelectedCarClass,
+  loadLoadAllSessionsDirectly,
+  saveLoadAllSessionsDirectly,
+  loadSelectedLoadTypes,
+  saveSelectedLoadTypes,
     saveSettings,
     updateResultsFolder,
     areBasicSettingsConfigured,
