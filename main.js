@@ -6,11 +6,54 @@ const { XMLParser } = require('fast-xml-parser');
 const os = require('os');
 const { Worker } = require('worker_threads');
 const dbManager = require('./modules/databaseManager');
+const { autoUpdater } = require('electron-updater');
 const parserOptions = {
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
   allowBooleanAttributes: true,
 };
+
+// Configuration de l'auto-updater
+autoUpdater.autoDownload = false; // Ne télécharge pas automatiquement
+autoUpdater.autoInstallOnAppQuit = true; // Installe au prochain redémarrage
+
+// Gestion des événements de mise à jour
+autoUpdater.on('checking-for-update', () => {
+  console.log('Vérification des mises à jour...');
+});
+
+autoUpdater.on('update-available', (info) => {
+  console.log('Mise à jour disponible:', info.version);
+  // Afficher une notification à l'utilisateur
+  if (mainWindow) {
+    mainWindow.webContents.send('update-available', info);
+  }
+});
+
+autoUpdater.on('update-not-available', (info) => {
+  console.log('Application à jour');
+});
+
+autoUpdater.on('error', (err) => {
+  console.error('Erreur lors de la mise à jour:', err);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  let log_message = `Vitesse de téléchargement: ${progressObj.bytesPerSecond}`;
+  log_message = log_message + ` - Téléchargé ${progressObj.percent}%`;
+  log_message = log_message + ` (${progressObj.transferred}/${progressObj.total})`;
+  console.log(log_message);
+  if (mainWindow) {
+    mainWindow.webContents.send('download-progress', progressObj);
+  }
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('Mise à jour téléchargée');
+  if (mainWindow) {
+    mainWindow.webContents.send('update-downloaded', info);
+  }
+});
 
 // Assure l'association correcte de l'icône dans la barre des tâches Windows
 // en définissant un AppUserModelID correspondant à build.appId
@@ -90,8 +133,6 @@ function createWindow() {
     }
   } catch {}
 
-
-
   win.loadFile('index.html');
   win.maximize();
 }
@@ -106,6 +147,15 @@ app.whenReady().then(() => {
   }
   
   createWindow();
+  
+  // Vérifier les mises à jour (seulement en production)
+  if (app.isPackaged) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(err => {
+        console.log('Impossible de vérifier les mises à jour:', err.message);
+      });
+    }, 3000); // Attendre 3 secondes après le démarrage
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -703,4 +753,26 @@ ipcMain.handle('open-lmu-file-by-path', async (_event, filePath) => {
     } catch (error) {
       return { ok: false, error: String(error) };
     }
+  });
+  // Handlers pour les mises à jour
+  ipcMain.handle('check-for-updates', async () => {
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      return { ok: true, updateInfo: result };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('download-update', async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('install-update', () => {
+    autoUpdater.quitAndInstall();
   });

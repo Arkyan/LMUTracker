@@ -2,3 +2,4 @@
 *.xml
 *.md
 /dist
+.env

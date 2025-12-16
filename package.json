@@ -4,7 +4,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "dotenv electron-builder"
   },
   "keywords": [],
   "author": "",
@@ -23,22 +23,39 @@
     ],
     "win": {
       "icon": "LMUTrackerLogo.ico",
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "signAndEditExecutable": false
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
       "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
       "installerIcon": "LMUTrackerLogo.ico",
       "uninstallerIcon": "LMUTrackerLogo.ico",
-      "installerHeaderIcon": "LMUTrackerLogo.ico"
+      "installerHeaderIcon": "LMUTrackerLogo.ico",
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "arkyan",
+      "repo": "LMUTracker"
     }
   },
   "dependencies": {
+    "better-sqlite3": "^12.5.0",
+    "electron-updater": "^6.6.2",
     "fast-xml-parser": "^5.2.5"
   },
   "devDependencies": {
+    "dotenv": "^17.2.3",
+    "dotenv-cli": "^11.0.0",
     "electron": "^38.2.0",
     "electron-builder": "^26.0.12"
   }
