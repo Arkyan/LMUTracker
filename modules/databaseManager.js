@@ -272,9 +272,10 @@
 
         const sessionId = sessionInfo.lastInsertRowid;
 
-        // Indexer les pilotes
+        // Indexer les pilotes (seulement ceux configurés)
         if (sessionData.Driver) {
-          indexDrivers(sessionId, sessionData.Driver);
+          const configuredDriver = getConfiguredDriverName();
+          indexDrivers(sessionId, sessionData.Driver, configuredDriver);
         }
 
         // Stocker le Stream en JSON
@@ -292,11 +293,29 @@
   }
 
   // Indexer les pilotes d'une session
-  function indexDrivers(sessionId, driversData) {
+  function indexDrivers(sessionId, driversData, configuredDriverName) {
     const drivers = Array.isArray(driversData) ? driversData : [driversData];
+
+    // Récupérer les noms de pilotes configurés
+    const normalizeName = (name) => (name || '').toLowerCase().trim();
+    const driverNames = configuredDriverName ? configuredDriverName.split(',').map(normalizeName).filter(Boolean) : [];
 
     for (const driver of drivers) {
       if (!driver || typeof driver !== 'object') continue;
+
+      // Filtrer : ne garder que le pilote configuré ou ses alias
+      if (driverNames.length > 0) {
+        const driverName = normalizeName(driver.Name);
+        const isConfiguredDriver = driverNames.includes(driverName);
+        
+        // Vérifier aussi dans les alias si c'est un swap
+        const aliases = driver.allDrivers ? driver.allDrivers.map(normalizeName) : [];
+        const hasConfiguredAlias = aliases.some(alias => driverNames.includes(alias));
+        
+        if (!isConfiguredDriver && !hasConfiguredAlias) {
+          continue; // Ignorer ce pilote
+        }
+      }
 
       try {
         const driverInfo = db.prepare(`
@@ -314,8 +333,8 @@
           driver.Laps ? parseInt(driver.Laps) : null,
           driver.BestLapTime ? parseFloat(driver.BestLapTime) : null,
           driver.BestLapNum ? parseInt(driver.BestLapNum) : null,
-          driver.VehType || driver.VehName || null,
-          driver.VehClass || null,
+          driver.VehType || driver.CarType || null,
+          driver.CarClass || null,
           driver.CarNumber || null,
           driver.TeamName || null
         );
@@ -340,10 +359,27 @@
       if (!lap || typeof lap !== 'object') continue;
 
       // Skip si pas de lap_num (requis)
-      const lapNum = lap.num !== undefined ? parseInt(lap.num) : null;
+      const lapNum = lap.num !== undefined ? parseInt(lap.num) : (lap['@_num'] !== undefined ? parseInt(lap['@_num']) : null);
       if (lapNum === null || isNaN(lapNum)) continue;
 
       try {
+        // Supporter à la fois le format parsé (num, timeSec, s1...) et le format XML brut (@_num, #text, @_s1...)
+        const lapTime = lap.timeSec !== undefined ? parseFloat(lap.timeSec) : 
+                       (lap['#text'] !== undefined ? parseFloat(lap['#text']) : 
+                       (lap.et !== undefined ? parseFloat(lap.et) : null));
+        
+        const sector1 = lap.s1 !== undefined ? parseFloat(lap.s1) : 
+                       (lap['@_s1'] !== undefined ? parseFloat(lap['@_s1']) : null);
+        
+        const sector2 = lap.s2 !== undefined ? parseFloat(lap.s2) : 
+                       (lap['@_s2'] !== undefined ? parseFloat(lap['@_s2']) : null);
+        
+        const sector3 = lap.s3 !== undefined ? parseFloat(lap.s3) : 
+                       (lap['@_s3'] !== undefined ? parseFloat(lap['@_s3']) : null);
+        
+        const fuelUsed = lap.fuel !== undefined ? parseFloat(lap.fuel) : 
+                        (lap['@_fuel'] !== undefined ? parseFloat(lap['@_fuel']) : null);
+
         db.prepare(`
           INSERT INTO laps (
             driver_id, lap_num, lap_time, sector1, sector2, sector3, fuel_used
@@ -351,16 +387,33 @@
         `).run(
           driverId,
           lapNum,
-          lap.et ? parseFloat(lap.et) : null,
-          lap.s1 ? parseFloat(lap.s1) : null,
-          lap.s2 ? parseFloat(lap.s2) : null,
-          lap.s3 ? parseFloat(lap.s3) : null,
-          lap.fuel ? parseFloat(lap.fuel) : null
+          lapTime,
+          sector1,
+          sector2,
+          sector3,
+          fuelUsed
         );
       } catch (error) {
         console.error(`[DB] Erreur lors de l'indexation du tour:`, error);
       }
     }
+  }
+
+  // Récupérer le nom du pilote configuré
+  function getConfiguredDriverName() {
+    try {
+      const { app } = require('electron');
+      const fs = require('fs');
+      const path = require('path');
+      const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+      if (fs.existsSync(settingsPath)) {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+        return settings.driverName || null;
+      }
+    } catch (e) {
+      console.warn('[DB] Impossible de lire le nom du pilote configuré:', e.message);
+    }
+    return null;
   }
 
   // Déterminer le type de session
@@ -515,9 +568,22 @@
       
       // Fermer la connexion si ouverte
       if (db) {
-        db.close();
+        try {
+          // Forcer le checkpoint et fermer proprement
+          db.pragma('wal_checkpoint(TRUNCATE)');
+          db.close();
+        } catch (e) {
+          console.warn('[DB] Erreur lors de la fermeture:', e.message);
+        }
         db = null;
       }
+
+      // Attendre un peu pour que le fichier soit complètement libéré
+      const sleep = (ms) => {
+        const start = Date.now();
+        while (Date.now() - start < ms) {}
+      };
+      sleep(100);
 
       // Supprimer le fichier de la base de données
       const userDataPath = app.getPath('userData');
@@ -525,17 +591,29 @@
       const walPath = path.join(userDataPath, 'lmutracker.db-wal');
       const shmPath = path.join(userDataPath, 'lmutracker.db-shm');
 
+      // Supprimer les fichiers WAL et SHM d'abord
+      try {
+        if (fs.existsSync(walPath)) {
+          fs.unlinkSync(walPath);
+          console.log('[DB] Fichier WAL supprimé');
+        }
+      } catch (e) {
+        console.warn('[DB] Impossible de supprimer le WAL:', e.message);
+      }
+
+      try {
+        if (fs.existsSync(shmPath)) {
+          fs.unlinkSync(shmPath);
+          console.log('[DB] Fichier SHM supprimé');
+        }
+      } catch (e) {
+        console.warn('[DB] Impossible de supprimer le SHM:', e.message);
+      }
+
+      // Puis supprimer la base principale
       if (fs.existsSync(dbPath)) {
         fs.unlinkSync(dbPath);
         console.log('[DB] Fichier de base de données supprimé');
-      }
-
-      // Supprimer les fichiers WAL et SHM si présents
-      if (fs.existsSync(walPath)) {
-        fs.unlinkSync(walPath);
-      }
-      if (fs.existsSync(shmPath)) {
-        fs.unlinkSync(shmPath);
       }
 
       // Réinitialiser

@@ -116,13 +116,19 @@ function formatBytes(bytes, decimals = 2) {
 
 // Exemple d'implémentation de l'interface utilisateur
 function showUpdateNotification(options) {
+  // Fermer la notification existante si elle existe
+  const existing = document.getElementById('update-notification');
+  if (existing) {
+    existing.remove();
+  }
+  
   // Créer un élément de notification
   const notification = document.createElement('div');
   notification.id = 'update-notification';
   notification.className = 'update-notification';
   notification.innerHTML = `
     <div class="update-content">
-      <h3>${options.title}</h3>
+      <h3><i class="fas fa-bell"></i>${options.title}</h3>
       <p>${options.message}</p>
       <div class="update-buttons">
         ${options.buttons.map((btn, index) => 

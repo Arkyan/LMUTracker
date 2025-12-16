@@ -13,6 +13,13 @@ const parserOptions = {
   allowBooleanAttributes: true,
 };
 
+// Fonction de log qui ne s'exécute qu'en développement
+const devLog = (...args) => {
+  if (!app.isPackaged) {
+    console.log(...args);
+  }
+};
+
 // Variable globale pour la fenêtre principale
 let mainWindow = null;
 
@@ -22,11 +29,11 @@ autoUpdater.autoInstallOnAppQuit = true; // Installe au prochain redémarrage
 
 // Gestion des événements de mise à jour
 autoUpdater.on('checking-for-update', () => {
-  console.log('Vérification des mises à jour...');
+  devLog('Vérification des mises à jour...');
 });
 
 autoUpdater.on('update-available', (info) => {
-  console.log('Mise à jour disponible:', info.version);
+  devLog('Mise à jour disponible:', info.version);
   // Afficher une notification à l'utilisateur
   if (mainWindow) {
     mainWindow.webContents.send('update-available', info);
@@ -34,7 +41,7 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', (info) => {
-  console.log('Application à jour');
+  devLog('Application à jour');
 });
 
 autoUpdater.on('error', (err) => {
@@ -45,14 +52,14 @@ autoUpdater.on('download-progress', (progressObj) => {
   let log_message = `Vitesse de téléchargement: ${progressObj.bytesPerSecond}`;
   log_message = log_message + ` - Téléchargé ${progressObj.percent}%`;
   log_message = log_message + ` (${progressObj.transferred}/${progressObj.total})`;
-  console.log(log_message);
+  devLog(log_message);
   if (mainWindow) {
     mainWindow.webContents.send('download-progress', progressObj);
   }
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  console.log('Mise à jour téléchargée');
+  devLog('Mise à jour téléchargée');
   if (mainWindow) {
     mainWindow.webContents.send('update-downloaded', info);
   }
@@ -141,6 +148,19 @@ function createWindow() {
   // Assigner à la variable globale
   mainWindow = win;
   
+  // Désactiver les DevTools en production
+  if (app.isPackaged) {
+    win.webContents.on('before-input-event', (event, input) => {
+      // Bloquer F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C
+      if (
+        input.key === 'F12' ||
+        (input.control && input.shift && ['I', 'J', 'C'].includes(input.key.toUpperCase()))
+      ) {
+        event.preventDefault();
+      }
+    });
+  }
+  
   return win;
 }
 
@@ -148,7 +168,7 @@ app.whenReady().then(() => {
   // Initialiser la base de données
   const dbInit = dbManager.initDatabase();
   if (dbInit.ok) {
-    console.log('[Main] Base de données initialisée');
+    devLog('[Main] Base de données initialisée');
   } else {
     console.error('[Main] Erreur d\'initialisation de la base de données:', dbInit.error);
   }
@@ -159,7 +179,7 @@ app.whenReady().then(() => {
   if (app.isPackaged) {
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch(err => {
-        console.log('Impossible de vérifier les mises à jour:', err.message);
+        devLog('Impossible de vérifier les mises à jour:', err.message);
       });
     }, 3000); // Attendre 3 secondes après le démarrage
   }
@@ -434,7 +454,7 @@ ipcMain.handle('parse-lmu-files', async (_event, filePaths) => {
     const byPath = new Map(all.map(x => [x.filePath, x]));
     const ordered = filePaths.map(fp => byPath.get(fp)).filter(Boolean);
     
-    console.log(`[Parse] ${cached.length} depuis BDD, ${parsedResults.length} parsés`);
+    devLog(`[Parse] ${cached.length} depuis BDD, ${parsedResults.length} parsés`);
     
     return { canceled: false, count: ordered.length, files: ordered };
   } catch (error) {
@@ -514,7 +534,7 @@ function convertDbDataToParsedFormat(dbData) {
             BestLapNum: driver.best_lap_num,
             VehType: driver.vehicle_name,
             VehName: driver.vehicle_name,
-            VehClass: driver.vehicle_class,
+            CarClass: driver.vehicle_class,
             CarNumber: driver.vehicle_number,
             TeamName: driver.team_name
           };

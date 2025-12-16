@@ -303,7 +303,7 @@ function calculateVehicleStatsByClass(driverName, lastScannedFiles) {
       });
       if (!myDriver) continue;
       const carClass = myDriver.carClass || 'Unknown';
-      const vehicleName = myDriver.car || myDriver.team || myDriver.number || 'Voiture inconnue';
+      const vehicleName = myDriver.car || 'Voiture inconnue';
       if (!result[carClass]) result[carClass] = {};
       if (!result[carClass][vehicleName]) {
         result[carClass][vehicleName] = {
@@ -375,7 +375,7 @@ function calculateTrackStatsForVehicle(driverName, lastScannedFiles, vehicleName
       });
       if (!myDriver) continue;
       const driverClass = myDriver.carClass || 'Unknown';
-      const derivedVehicle = myDriver.car || myDriver.team || myDriver.number || 'Voiture inconnue';
+      const derivedVehicle = myDriver.car || 'Voiture inconnue';
       if (driverClass !== carClass) continue;
       if (derivedVehicle !== vehicleName) continue;
       
