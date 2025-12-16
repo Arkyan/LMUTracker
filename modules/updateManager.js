@@ -42,6 +42,12 @@ window.electron?.ipcRenderer?.on('download-progress', (event, progress) => {
 window.electron?.ipcRenderer?.on('update-downloaded', (event, info) => {
   console.log('Mise à jour téléchargée, prête à installer');
   
+  // Afficher l'indicateur dans les paramètres
+  const updateStatus = document.getElementById('updateStatus');
+  if (updateStatus) {
+    updateStatus.style.display = 'block';
+  }
+  
   showUpdateNotification({
     title: 'Mise à jour prête',
     message: 'La mise à jour a été téléchargée. L\'application redémarrera pour l\'installer.',
@@ -61,20 +67,29 @@ window.electron?.ipcRenderer?.on('update-downloaded', (event, info) => {
 // Fonctions helper
 async function checkForUpdates() {
   try {
-    const result = await window.electron.ipcRenderer.invoke('check-for-updates');
+    const result = await window.lmuAPI.checkForUpdates();
     if (!result.ok) {
       console.error('Erreur lors de la vérification:', result.error);
     }
+    return result;
   } catch (error) {
     console.error('Erreur:', error);
+    throw error;
   }
 }
 
 async function downloadUpdate() {
   try {
-    const result = await window.electron.ipcRenderer.invoke('download-update');
-    if (result.ok) {
-      showDownloadProgress();
+    console.log('Début du téléchargement de la mise à jour...');
+    
+    // Afficher la barre de progression AVANT de commencer le téléchargement
+    showDownloadProgress();
+    
+    const result = await window.lmuAPI.downloadUpdate();
+    console.log('Résultat du téléchargement:', result);
+    
+    if (!result.ok) {
+      console.error('Échec du téléchargement:', result.error);
     }
   } catch (error) {
     console.error('Erreur lors du téléchargement:', error);
@@ -82,7 +97,12 @@ async function downloadUpdate() {
 }
 
 async function installUpdate() {
-  await window.electron.ipcRenderer.invoke('install-update');
+  try {
+    console.log('Installation de la mise à jour et redémarrage...');
+    await window.lmuAPI.installUpdate();
+  } catch (error) {
+    console.error('Erreur lors de l\'installation:', error);
+  }
 }
 
 function formatBytes(bytes, decimals = 2) {
@@ -151,6 +171,72 @@ function closeUpdateNotification() {
     notification.remove();
   }
 }
+
+// Variable globale pour suivre l'état de la mise à jour
+let updateDownloaded = false;
+
+// Initialisation au chargement de la page
+document.addEventListener('DOMContentLoaded', async () => {
+  // Afficher la version de l'app dans les paramètres
+  const versionElement = document.getElementById('appVersion');
+  if (versionElement) {
+    try {
+      const version = await window.lmuAPI.getAppVersion();
+      versionElement.textContent = `v${version}`;
+    } catch (error) {
+      console.error('Erreur lors de la récupération de la version:', error);
+      versionElement.textContent = 'Inconnue';
+    }
+  }
+
+  // Gérer le bouton de vérification des mises à jour
+  const btnCheckUpdates = document.getElementById('btnCheckUpdates');
+  if (btnCheckUpdates) {
+    btnCheckUpdates.addEventListener('click', async () => {
+      const icon = btnCheckUpdates.querySelector('i');
+      const originalHTML = btnCheckUpdates.innerHTML;
+      
+      btnCheckUpdates.disabled = true;
+      btnCheckUpdates.innerHTML = '<i class=\"fas fa-spinner fa-spin\"></i> Vérification...';
+      
+      try {
+        await checkForUpdates();
+        
+        // Attendre 2 secondes pour laisser le temps à la notification d'apparaître si disponible
+        setTimeout(() => {
+          if (!document.getElementById('update-notification')) {
+            // Pas de mise à jour disponible
+            btnCheckUpdates.innerHTML = '<i class=\"fas fa-check\"></i> Application à jour';
+            btnCheckUpdates.style.background = 'rgba(34,197,94,0.1)';
+            btnCheckUpdates.style.borderColor = 'rgba(34,197,94,0.3)';
+            btnCheckUpdates.style.color = '#22c55e';
+            
+            setTimeout(() => {
+              btnCheckUpdates.innerHTML = originalHTML;
+              btnCheckUpdates.disabled = false;
+              btnCheckUpdates.style = '';
+            }, 3000);
+          } else {
+            btnCheckUpdates.innerHTML = originalHTML;
+            btnCheckUpdates.disabled = false;
+          }
+        }, 2000);
+      } catch (error) {
+        console.error('Erreur lors de la vérification:', error);
+        btnCheckUpdates.innerHTML = '<i class=\"fas fa-exclamation-triangle\"></i> Erreur';
+        btnCheckUpdates.style.background = 'rgba(239,68,68,0.1)';
+        btnCheckUpdates.style.borderColor = 'rgba(239,68,68,0.3)';
+        btnCheckUpdates.style.color = '#ef4444';
+        
+        setTimeout(() => {
+          btnCheckUpdates.innerHTML = originalHTML;
+          btnCheckUpdates.disabled = false;
+          btnCheckUpdates.style = '';
+        }, 3000);
+      }
+    });
+  }
+});
 
 // CSS à ajouter à votre styles.css
 const updateStyles = `

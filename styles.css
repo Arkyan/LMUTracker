@@ -735,3 +735,142 @@ pre{
     font-size: 24px;
   }
 }
+
+/* Notifications de mise à jour */
+.update-notification {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  width: 400px;
+  max-width: calc(100vw - 48px);
+  background: rgba(26, 31, 46, 0.98);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  padding: 24px;
+  z-index: 9999;
+  animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.update-content h3 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--brand), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-content h3::before {
+  content: "🔔";
+  font-size: 20px;
+  -webkit-text-fill-color: initial;
+}
+
+.update-content p {
+  margin: 0 0 20px 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.update-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.update-buttons button {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 14px;
+}
+
+.update-buttons button:first-child {
+  background: linear-gradient(135deg, var(--brand), var(--accent));
+  color: white;
+}
+
+.update-buttons button:first-child:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--accent-glow);
+}
+
+.update-buttons button:last-child {
+  background: var(--panel-light);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.update-buttons button:last-child:hover {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.update-buttons button:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Barre de progression */
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--panel-light);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--brand), var(--accent));
+  transition: width 0.3s ease;
+  border-radius: 8px;
+}
+
+#progress-text {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  margin: 0;
+}
+
+/* Responsive pour les notifications */
+@media (max-width: 768px) {
+  .update-notification {
+    top: 16px;
+    right: 16px;
+    left: 16px;
+    width: auto;
+    max-width: none;
+  }
+  
+  .update-buttons {
+    flex-direction: column;
+  }
+  
+  .update-buttons button {
+    width: 100%;
+  }
+}

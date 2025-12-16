@@ -227,6 +227,38 @@
           </div>
         </div>
 
+        <!-- Section À propos -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <div class="settings-section-icon"><i class="fas fa-info-circle"></i></div>
+            <div>
+              <h3 class="settings-section-title">À propos</h3>
+              <p class="settings-section-desc">Informations sur l'application et mises à jour</p>
+            </div>
+          </div>
+          <div class="settings-section-content">
+            <div class="settings-field" style="padding:16px;background:rgba(167,139,250,0.1);border-radius:8px;border:1px solid rgba(167,139,250,0.2);">
+              <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+                <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-tag"></i> Version actuelle</span>
+                <span id="appVersion" style="color:#e2e8f0;font-weight:600;">-</span>
+              </div>
+              <div id="updateStatus" style="display:none;padding:12px;background:rgba(34,197,94,0.1);border-radius:6px;border:1px solid rgba(34,197,94,0.3);margin-top:12px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                  <i class="fas fa-download" style="color:#22c55e;"></i>
+                  <span style="color:#22c55e;font-weight:600;">Mise à jour téléchargée</span>
+                </div>
+                <div style="color:#94a3b8;font-size:13px;">Une mise à jour est prête. Elle sera installée au prochain redémarrage.</div>
+              </div>
+            </div>
+            <div style="margin-top:12px;">
+              <button id="btnCheckUpdates" class="settings-btn-secondary" style="width:100%;">
+                <i class="fas fa-sync-alt"></i>
+                Vérifier les mises à jour
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Actions -->
         <div class="settings-actions">
           <button id="btnSaveSettings" class="settings-btn-primary">
@@ -249,6 +281,7 @@
   <script src="modules/fileManager.js"></script>
   <script src="modules/profileManager.js"></script>
   <script src="modules/databaseUI.js"></script>
+  <script src="modules/updateManager.js"></script>
   
   <!-- Fichier principal -->
   <script src="renderer.js"></script>

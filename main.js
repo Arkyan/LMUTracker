@@ -13,6 +13,9 @@ const parserOptions = {
   allowBooleanAttributes: true,
 };
 
+// Variable globale pour la fenêtre principale
+let mainWindow = null;
+
 // Configuration de l'auto-updater
 autoUpdater.autoDownload = false; // Ne télécharge pas automatiquement
 autoUpdater.autoInstallOnAppQuit = true; // Installe au prochain redémarrage
@@ -134,6 +137,11 @@ function createWindow() {
 
   win.loadFile('index.html');
   win.maximize();
+  
+  // Assigner à la variable globale
+  mainWindow = win;
+  
+  return win;
 }
 
 app.whenReady().then(() => {
@@ -754,6 +762,10 @@ ipcMain.handle('open-lmu-file-by-path', async (_event, filePath) => {
     }
   });
   // Handlers pour les mises à jour
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+  });
+
   ipcMain.handle('check-for-updates', async () => {
     try {
       const result = await autoUpdater.checkForUpdates();
