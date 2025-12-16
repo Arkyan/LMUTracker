@@ -110,8 +110,7 @@ function createWindow() {
     height: 900,
     minWidth: 1200,
     minHeight: 800,
-  icon: browserIcon || iconPath,
-  icon: browserIcon || icoPath || pngPath || iconPath || undefined,
+    icon: iconPath,
     autoHideMenuBar: true, // Cache la barre de menus par défaut (peut être réaffichée avec Alt)
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

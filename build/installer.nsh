@@ -12,9 +12,19 @@
 
 !macro customInstall
   ; Actions supplémentaires pendant l'installation
-  
-  ; Créer un raccourci sur le bureau avec une description
-  CreateShortcut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_FILENAME}.exe" "" "$INSTDIR\${PRODUCT_FILENAME}.exe" 0 SW_SHOWNORMAL "" "Gestionnaire de profils LMU"
+
+  ; Créer des raccourcis en utilisant explicitement l'icône .ico livrée avec l'app.
+  ; Important: sur Windows, l'icône affichée dans la barre des tâches dépend souvent du raccourci utilisé pour lancer l'app.
+  StrCpy $0 "$INSTDIR\resources\app\LMUTrackerLogo.ico"
+  IfFileExists "$0" +2 0
+    StrCpy $0 "$INSTDIR\${PRODUCT_FILENAME}.exe"
+
+  ; Raccourci Bureau
+  CreateShortcut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_FILENAME}.exe" "" "$0" 0 SW_SHOWNORMAL "" "Gestionnaire de profils LMU"
+
+  ; Raccourci Menu Démarrer
+  CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
+  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_FILENAME}.exe" "" "$0" 0 SW_SHOWNORMAL "" "Gestionnaire de profils LMU"
   
   ; Afficher un message de bienvenue
   MessageBox MB_ICONINFORMATION "Merci d'avoir installé LMU Tracker !$\r$\n$\r$\nL'application vérifiera automatiquement les mises à jour au démarrage."
@@ -24,6 +34,10 @@
   ; Actions lors de la désinstallation
   ; Supprimer le raccourci bureau
   Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
+
+  ; Supprimer le raccourci et dossier du menu démarrer
+  Delete "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk"
+  RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
 !macroend
 
 !macro customRemoveFiles

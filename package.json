@@ -4,7 +4,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "dotenv electron-builder"
+    "build": "dotenv electron-builder",
+    "publish": "dotenv electron-builder -- --publish always"
   },
   "keywords": [],
   "author": "",
@@ -13,13 +14,14 @@
   "build": {
     "appId": "com.lmutracker.app",
     "productName": "LMU Tracker",
-    "icon": "LMUTrackerLogo.ico",
     "asar": false,
     "directories": {
       "output": "dist"
     },
     "files": [
-      "**/*"
+      "**/*",
+      "!**/*.md",
+      "LMUTrackerLogo.ico"
     ],
     "win": {
       "icon": "LMUTrackerLogo.ico",
@@ -31,10 +33,10 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowElevation": true,
+      "allowElevation": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": "always",
-      "createStartMenuShortcut": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": false,
       "runAfterFinish": true,
       "installerIcon": "LMUTrackerLogo.ico",
       "uninstallerIcon": "LMUTrackerLogo.ico",
