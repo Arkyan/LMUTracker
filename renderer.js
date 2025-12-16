@@ -218,11 +218,16 @@ function performInitialScan() {
         console.log('Lancement du scan initial...');
         // Si l’option tout charger est activée, proposer un préchargement bloquant UI
         if (loadAll) {
-          setStartupOverlay(true);
-          // Brancher sur les évènements d’avancement de l’historique
+          // Brancher sur les évènements d'avancement de l'historique
           let lastDetail = { rendered: 0, totalMeta: 0 };
+          let overlayShown = false;
           const onUpdate = (ev) => {
             lastDetail = ev?.detail || lastDetail;
+            // N'afficher l'overlay que s'il y a effectivement des fichiers à charger
+            if (lastDetail.totalMeta > 0 && !overlayShown) {
+              setStartupOverlay(true);
+              overlayShown = true;
+            }
             updateStartupProgress(lastDetail.rendered || 0, lastDetail.totalMeta || 0, 'Chargement des sessions…');
           };
           try { window.addEventListener('lmu:history-updated', onUpdate); } catch(_) {}
@@ -233,7 +238,9 @@ function performInitialScan() {
           // Observer la fin: quand rendered == totalMeta (et > 0), on ferme l’overlay
           const checkDone = () => {
             const done = (lastDetail.totalMeta > 0) && (lastDetail.rendered >= lastDetail.totalMeta);
-            if (done) {
+            // Ou si totalMeta est 0 (aucun fichier), ne rien afficher et arrêter
+            const noFiles = lastDetail.totalMeta === 0;
+            if (done || noFiles) {
               setStartupOverlay(false);
               try { window.removeEventListener('lmu:history-updated', onUpdate); } catch(_) {}
             } else {

@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
   <!-- Overlay de préchargement (chargement complet avant UI) -->
@@ -30,16 +31,16 @@
       <span class="brand-text">LMU Tracker</span>
     </div>
     <nav class="nav">
-      <button class="nav-btn active" data-view="profile">👨‍💼 Profil</button>
-      <button class="nav-btn" data-view="history">📊 Historique</button>
-      <button class="nav-btn" data-view="vehicles">🚘 Voitures</button>
-      <button class="nav-btn" data-view="settings">⚙️ Settings</button>
+      <button class="nav-btn active" data-view="profile"><i class="fas fa-user"></i> Profil</button>
+      <button class="nav-btn" data-view="history"><i class="fas fa-chart-line"></i> Historique</button>
+      <button class="nav-btn" data-view="vehicles"><i class="fas fa-car"></i> Voitures</button>
+      <button class="nav-btn" data-view="settings"><i class="fas fa-cog"></i> Settings</button>
     </nav>
   </header>
   <main class="app-main">
     <section id="view-profile" class="view active">
       <div class="card">
-        <h2 style="margin-bottom:20px;font-size:24px;background:linear-gradient(135deg,var(--brand),var(--accent));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;color:transparent;">👨‍💼 Profil Pilote</h2>
+        <h2 style="margin-bottom:20px;font-size:24px;background:linear-gradient(135deg,var(--brand),var(--accent));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;color:transparent;"><i class="fas fa-user"></i> Profil Pilote</h2>
         
         <div id="profileContent">
           <!-- Le contenu du profil sera généré par JavaScript -->
@@ -62,14 +63,14 @@
     <section id="view-settings" class="view">
       <div class="settings-container">
         <div class="settings-header">
-          <h1 class="settings-title">⚙️ Paramètres</h1>
+          <h1 class="settings-title"><i class="fas fa-cog"></i> Paramètres</h1>
           <p class="settings-subtitle">Configurez votre expérience LMU Tracker</p>
         </div>
 
         <!-- Section Profil -->
         <div class="settings-section">
           <div class="settings-section-header">
-            <div class="settings-section-icon">👨‍💼</div>
+            <div class="settings-section-icon"><i class="fas fa-user"></i></div>
             <div>
               <h3 class="settings-section-title">Profil Pilote</h3>
               <p class="settings-section-desc">Informations personnelles et identification</p>
@@ -87,7 +88,7 @@
         <!-- Section Données -->
         <div class="settings-section">
           <div class="settings-section-header">
-            <div class="settings-section-icon">📁</div>
+            <div class="settings-section-icon"><i class="fas fa-folder"></i></div>
             <div>
               <h3 class="settings-section-title">Source de Données</h3>
               <p class="settings-section-desc">Configuration des fichiers de résultats</p>
@@ -99,7 +100,7 @@
               <div class="settings-input-group">
                 <input type="text" id="resultsFolder" class="settings-input" placeholder="Aucun dossier sélectionné" readonly />
                 <button id="btnSelectFolder" class="settings-btn-secondary">
-                  <span>🔍</span>
+                  <i class="fas fa-search"></i>
                   Parcourir
                 </button>
               </div>
@@ -111,7 +112,7 @@
         <!-- Section Performance -->
         <div class="settings-section">
           <div class="settings-section-header">
-            <div class="settings-section-icon">⚡</div>
+            <div class="settings-section-icon"><i class="fas fa-bolt"></i></div>
             <div>
               <h3 class="settings-section-title">Performance et Chargement</h3>
               <p class="settings-section-desc">Options d'optimisation et de chargement</p>
@@ -136,7 +137,7 @@
         <!-- Section Filtres -->
         <div class="settings-section">
           <div class="settings-section-header">
-            <div class="settings-section-icon">🎯</div>
+            <div class="settings-section-icon"><i class="fas fa-filter"></i></div>
             <div>
               <h3 class="settings-section-title">Filtres de Sessions</h3>
               <p class="settings-section-desc">Choisissez les types de sessions à analyser</p>
@@ -149,21 +150,21 @@
                 <div class="settings-checkbox-item">
                   <input type="checkbox" id="loadTypeRace" class="settings-checkbox" />
                   <label for="loadTypeRace" class="settings-checkbox-label">
-                    <span class="settings-checkbox-icon">🏁</span>
+                    <span class="settings-checkbox-icon"><i class="fas fa-flag-checkered"></i></span>
                     <span class="settings-checkbox-text">Courses</span>
                   </label>
                 </div>
                 <div class="settings-checkbox-item">
                   <input type="checkbox" id="loadTypeQual" class="settings-checkbox" />
                   <label for="loadTypeQual" class="settings-checkbox-label">
-                    <span class="settings-checkbox-icon">⏱️</span>
+                    <span class="settings-checkbox-icon"><i class="fas fa-stopwatch"></i></span>
                     <span class="settings-checkbox-text">Qualifications</span>
                   </label>
                 </div>
                 <div class="settings-checkbox-item">
                   <input type="checkbox" id="loadTypePractice" class="settings-checkbox" />
                   <label for="loadTypePractice" class="settings-checkbox-label">
-                    <span class="settings-checkbox-icon">🧪</span>
+                    <span class="settings-checkbox-icon"><i class="fas fa-flask"></i></span>
                     <span class="settings-checkbox-text">Essais Libres</span>
                   </label>
                 </div>
@@ -173,10 +174,63 @@
           </div>
         </div>
 
+        <!-- Section Base de données -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <div class="settings-section-icon"><i class="fas fa-database"></i></div>
+            <div>
+              <h3 class="settings-section-title">Base de Données</h3>
+              <p class="settings-section-desc">Statistiques et gestion du cache SQLite</p>
+            </div>
+          </div>
+          <div class="settings-section-content">
+            <div id="dbStats" class="settings-field" style="padding:16px;background:rgba(59,130,246,0.1);border-radius:8px;border:1px solid rgba(59,130,246,0.2);">
+              <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+                <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-file"></i> Fichiers indexés</span>
+                <span id="dbStatsFiles" style="color:#e2e8f0;font-weight:600;">-</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+                <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-flag-checkered"></i> Sessions enregistrées</span>
+                <span id="dbStatsSessions" style="color:#e2e8f0;font-weight:600;">-</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+                <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-users"></i> Pilotes indexés</span>
+                <span id="dbStatsDrivers" style="color:#e2e8f0;font-weight:600;">-</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
+                <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-stopwatch"></i> Tours enregistrés</span>
+                <span id="dbStatsLaps" style="color:#e2e8f0;font-weight:600;">-</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-hdd"></i> Taille de la BDD</span>
+                <span id="dbStatsSize" style="color:#e2e8f0;font-weight:600;">-</span>
+              </div>
+            </div>
+            <div class="settings-help" style="margin-top:12px;">
+              La base de données SQLite stocke les sessions déjà parsées pour un chargement instantané. 
+              Cela évite de réindexer les fichiers à chaque démarrage.
+            </div>
+            <div style="margin-top:12px;display:flex;gap:8px;">
+              <button id="btnRefreshDbStats" class="settings-btn-secondary" style="flex:1;">
+                <i class="fas fa-sync-alt"></i>
+                Actualiser
+              </button>
+              <button id="btnCleanupDb" class="settings-btn-secondary" style="flex:1;">
+                <i class="fas fa-broom"></i>
+                Nettoyer
+              </button>
+              <button id="btnResetDb" class="settings-btn-secondary" style="flex:1;background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.3);color:#ef4444;">
+                <i class="fas fa-trash-alt"></i>
+                Réinitialiser
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Actions -->
         <div class="settings-actions">
           <button id="btnSaveSettings" class="settings-btn-primary">
-            <span>💾</span>
+            <i class="fas fa-save"></i>
             Enregistrer les paramètres
           </button>
         </div>
@@ -194,6 +248,7 @@
   <script src="modules/navigation.js"></script>
   <script src="modules/fileManager.js"></script>
   <script src="modules/profileManager.js"></script>
+  <script src="modules/databaseUI.js"></script>
   
   <!-- Fichier principal -->
   <script src="renderer.js"></script>

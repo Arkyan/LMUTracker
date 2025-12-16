@@ -5,6 +5,7 @@ const fsSync = require('fs');
 const { XMLParser } = require('fast-xml-parser');
 const os = require('os');
 const { Worker } = require('worker_threads');
+const dbManager = require('./modules/databaseManager');
 const parserOptions = {
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
@@ -95,10 +96,25 @@ function createWindow() {
   win.maximize();
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // Initialiser la base de données
+  const dbInit = dbManager.initDatabase();
+  if (dbInit.ok) {
+    console.log('[Main] Base de données initialisée');
+  } else {
+    console.error('[Main] Erreur d\'initialisation de la base de données:', dbInit.error);
+  }
+  
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
+  dbManager.closeDatabase();
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  dbManager.closeDatabase();
 });
 
 // ===========================
@@ -303,40 +319,66 @@ ipcMain.handle('parse-lmu-files', async (_event, filePaths) => {
     return { canceled: true, error: 'Aucun fichier fourni' };
   }
   try {
-    // Préparer cache et répartir entre hits et manquants
-    await loadSessionsCacheFromDisk();
+    // Vérifier d'abord quels fichiers sont déjà en BDD
     const cached = [];
     const toParse = [];
+    
     for (const fp of filePaths) {
       try {
         const st = await fs.stat(fp);
-        const hit = await getCachedParsedIfFresh(fp, st.mtimeMs, st.size);
-        if (hit) {
-          cached.push(hit);
+        const dbCheck = dbManager.isFileIndexed(fp, st);
+        
+        if (dbCheck.indexed) {
+          // Récupérer depuis la BDD
+          const dbData = dbManager.getFileData(fp);
+          if (dbData) {
+            // Convertir les données BDD au format attendu
+            const parsed = convertDbDataToParsedFormat(dbData);
+            cached.push({ 
+              filePath: fp, 
+              parsed, 
+              mtimeMs: st.mtimeMs, 
+              mtimeIso: st.mtime.toISOString(),
+              fromDb: true 
+            });
+          } else {
+            toParse.push({ filePath: fp, stat: st });
+          }
         } else {
           toParse.push({ filePath: fp, stat: st });
         }
-      } catch (_) {
+      } catch (err) {
         toParse.push({ filePath: fp, stat: null });
       }
     }
+    
     let parsedResults = [];
     if (toParse.length > 0) {
       const results = await parseFilesWithWorkerPool(toParse.map(t => t.filePath));
-      // Alimenter le cache
+      
+      // Indexer dans la BDD et alimenter le cache JSON (fallback)
       for (const r of results) {
         if (r && r.filePath && r.parsed && typeof r.mtimeMs === 'number') {
           try {
             const st = await fs.stat(r.filePath);
+            
+            // Indexer dans la BDD
+            dbManager.indexFile(r.filePath, st, r.parsed);
+            
+            // Alimenter aussi le cache JSON pour compatibilité
             await setCachedParsed(r.filePath, r.mtimeMs, st.size, r.parsed);
           } catch (_) { /* ignore */ }
         }
       }
       parsedResults = results;
     }
+    
     const all = [...cached, ...parsedResults];
     const byPath = new Map(all.map(x => [x.filePath, x]));
     const ordered = filePaths.map(fp => byPath.get(fp)).filter(Boolean);
+    
+    console.log(`[Parse] ${cached.length} depuis BDD, ${parsedResults.length} parsés`);
+    
     return { canceled: false, count: ordered.length, files: ordered };
   } catch (error) {
     // Fallback: parser côté main avec concurrence limitée si les workers échouent
@@ -356,6 +398,10 @@ ipcMain.handle('parse-lmu-files', async (_event, filePaths) => {
               fs.stat(fp)
             ]);
             const parsed = parser.parse(content);
+            
+            // Indexer dans la BDD
+            dbManager.indexFile(fp, stat, parsed);
+            
             out[i] = { filePath: fp, parsed, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString() };
           } catch (err) {
             try {
@@ -373,6 +419,76 @@ ipcMain.handle('parse-lmu-files', async (_event, filePaths) => {
     }
   }
 });
+
+// Fonction helper pour convertir les données BDD au format parsé attendu
+function convertDbDataToParsedFormat(dbData) {
+  if (!dbData || !dbData.metadata) return null;
+  
+  const raceResults = {
+    GameVersion: dbData.metadata.game_version,
+    TrackVenue: dbData.metadata.track_venue,
+    TrackCourse: dbData.metadata.track_course,
+    TrackEvent: dbData.metadata.track_event,
+    TrackLength: dbData.metadata.track_length,
+    DateTime: dbData.metadata.date_time,
+    TimeString: dbData.metadata.time_string
+  };
+  
+  // Reconstruire les sessions
+  if (dbData.sessions && Array.isArray(dbData.sessions)) {
+    for (const session of dbData.sessions) {
+      const sessionData = {
+        DateTime: session.date_time,
+        TimeString: session.time_string,
+        Laps: session.laps,
+        Minutes: session.minutes
+      };
+      
+      // Ajouter les pilotes
+      if (session.drivers && Array.isArray(session.drivers)) {
+        sessionData.Driver = session.drivers.map(driver => {
+          const driverData = {
+            Name: driver.name,
+            isPlayer: driver.is_player,
+            Position: driver.position,
+            FinishStatus: driver.finish_status,
+            Laps: driver.laps,
+            BestLapTime: driver.best_lap_time,
+            BestLapNum: driver.best_lap_num,
+            VehType: driver.vehicle_name,
+            VehName: driver.vehicle_name,
+            VehClass: driver.vehicle_class,
+            CarNumber: driver.vehicle_number,
+            TeamName: driver.team_name
+          };
+          
+          // Ajouter les tours
+          if (driver.laps && Array.isArray(driver.laps)) {
+            driverData.Lap = driver.laps.map(lap => ({
+              num: lap.lap_num,
+              et: lap.lap_time,
+              s1: lap.sector1,
+              s2: lap.sector2,
+              s3: lap.sector3,
+              fuel: lap.fuel_used
+            }));
+          }
+          
+          return driverData;
+        });
+      }
+      
+      // Ajouter le Stream
+      if (session.stream) {
+        sessionData.Stream = session.stream;
+      }
+      
+      raceResults[session.session_name] = sessionData;
+    }
+  }
+  
+  return { rFactorXML: { RaceResults: raceResults } };
+}
 
 // ===========================
 // Worker pool pour parsing XML
@@ -539,4 +655,52 @@ ipcMain.handle('open-lmu-file-by-path', async (_event, filePath) => {
 
   ipcMain.handle('settings-write', async (_event, settingsObj) => {
     return await writeSettingsToDisk(settingsObj);
+  });
+
+  // ===========================
+  // API Base de données
+  // ===========================
+  ipcMain.handle('db-get-stats', async () => {
+    try {
+      const stats = dbManager.getDatabaseStats();
+      return { ok: true, stats };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('db-get-all-files', async () => {
+    try {
+      const files = dbManager.getAllFileMetadata();
+      return { ok: true, files };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('db-cleanup', async () => {
+    try {
+      const result = dbManager.cleanupMissingFiles();
+      return result;
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('db-get-file-data', async (_event, filePath) => {
+    try {
+      const data = dbManager.getFileData(filePath);
+      return { ok: true, data };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('db-reset', async () => {
+    try {
+      const result = dbManager.resetDatabase();
+      return result;
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
   });

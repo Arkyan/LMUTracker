@@ -5,7 +5,7 @@
 
 (function() {
   // Version UI pour invalider le cache du profil quand la structure change
-  const UI_PROFILE_VERSION = 4;
+  const UI_PROFILE_VERSION = 5;
   // Générer le contenu complet du profil pilote
   function generateProfileContent() {
   const container = document.getElementById('profileContent');
@@ -47,8 +47,15 @@
   const vehicleStatsByClass = window.LMUStatsCalculator ?
     window.LMUStatsCalculator.getCachedVehicleStatsByClass(driverName, lastScannedFiles) : {};
   
+  // Vérifier si on a des données
+  if (!stats || !lastScannedFiles || lastScannedFiles.length === 0) {
+    const noDataContent = generateNoDataContent();
+    container.innerHTML = noDataContent;
+    return;
+  }
+  
   let html = generateWelcomeSection(driverName, stats);
-  html += generateTrackPerformanceSection(trackStats, selectedCarClass, lastScannedFiles);
+  // Section Performance par Circuit retirée
   html += generateRecentSessionsSection(stats);
   
   container.innerHTML = html;
@@ -62,11 +69,23 @@
 // Générer le contenu pour un profil vide (pas de pilote configuré)
 function generateEmptyProfileContent() {
   return `
-    <div style="text-align:center;padding:40px;color:var(--muted);">
-      <div style="font-size:48px;margin-bottom:16px;">🏁</div>
+    <div class="card no-hover" style="text-align:center;padding:40px;color:var(--muted);">
+      <div style="font-size:48px;margin-bottom:16px;"><i class="fas fa-flag-checkered" style="font-size:48px;"></i></div>
       <h3 style="margin-bottom:12px;color:var(--text);">Aucun nom de pilote configuré</h3>
       <p style="margin-bottom:20px;">Veuillez configurer votre nom de pilote dans les paramètres pour voir vos statistiques.</p>
-      <button class="btn primary" onclick="switchView('settings')">⚙️ Aller aux paramètres</button>
+      <button class="btn primary" onclick="switchView('settings')"><i class="fas fa-cog"></i> Aller aux paramètres</button>
+    </div>
+  `;
+}
+
+// Générer le contenu quand aucune session n'est disponible
+function generateNoDataContent() {
+  return `
+    <div class="card no-hover" style="text-align:center;padding:40px;color:var(--muted);">
+      <div style="font-size:48px;margin-bottom:16px;"><i class="fas fa-folder-open" style="font-size:48px;"></i></div>
+      <h3 style="margin-bottom:12px;color:var(--text);">Aucune donnée disponible</h3>
+      <p style="margin-bottom:20px;">Aucune session n'a été trouvée dans le dossier configuré.<br>Vérifiez que le dossier contient des fichiers de résultats LMU.</p>
+      <button class="btn primary" onclick="switchView('settings')"><i class="fas fa-cog"></i> Configurer le dossier</button>
     </div>
   `;
 }
@@ -80,7 +99,7 @@ function generateWelcomeSection(driverName, stats) {
       <!-- Carte de bienvenue -->
       <div class="card" style="background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(167,139,250,0.1));border:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
-          <div style="width:64px;height:64px;background:linear-gradient(135deg,var(--brand),var(--accent));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;">🏁</div>
+          <div style="width:64px;height:64px;background:linear-gradient(135deg,var(--brand),var(--accent));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;"><i class="fas fa-flag-checkered"></i></div>
           <div>
             <h2 style="margin:0;font-size:24px;color:var(--text);">Bonjour, ${driverName} !</h2>
             <p style="margin:4px 0 0 0;color:var(--muted);">Bienvenue dans votre tableau de bord LMU</p>
@@ -88,17 +107,17 @@ function generateWelcomeSection(driverName, stats) {
         </div>
         ${stats.totalSessions > 0 ? `
           <div class="row" style="gap:16px;flex-wrap:wrap;">
-            <div class="chip" style="background:var(--ok);color:#000;font-weight:600;">🏆 ${stats.totalRaces} course(s)</div>
-            <div class="chip" style="background:var(--accent);color:#fff;font-weight:600;">🏃 ${stats.totalSessions} session(s)</div>
-            <div class="chip" style="background:#fbbf24;color:#000;font-weight:600;">🥇 ${stats.totalWins} victoire(s)</div>
-            <div class="chip" style="background:#a855f7;color:#fff;font-weight:600;">🏅 ${stats.totalPodiums} podium(s)</div>
+            <div class="chip" style="background:var(--ok);color:#000;font-weight:600;"><i class="fas fa-trophy"></i> ${stats.totalRaces} course(s)</div>
+            <div class="chip" style="background:var(--accent);color:#fff;font-weight:600;"><i class="fas fa-running"></i> ${stats.totalSessions} session(s)</div>
+            <div class="chip" style="background:#fbbf24;color:#000;font-weight:600;"><i class="fas fa-medal"></i> ${stats.totalWins} victoire(s)</div>
+            <div class="chip" style="background:#a855f7;color:#fff;font-weight:600;"><i class="fas fa-award"></i> ${stats.totalPodiums} podium(s)</div>
           </div>
         ` : ''}
       </div>
       
       <!-- Statistiques rapides -->
       <div class="card">
-        <h3 style="margin:0 0 16px 0;color:var(--accent);">📊 Statistiques</h3>
+        <h3 style="margin:0 0 16px 0;color:var(--accent);"><i class="fas fa-chart-bar"></i> Statistiques</h3>
         <div style="display:grid;gap:12px;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <span style="color:var(--muted);">Sessions totales</span>
@@ -143,7 +162,7 @@ function generateTrackPerformanceSection(trackStats, selectedCarClass, lastScann
     return `
       <div class="card" style="margin-bottom:24px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-          <h3 style="margin:0;color:var(--accent);">🏁 Performance par Circuit</h3>
+          <h3 style="margin:0;color:var(--accent);"><i class="fas fa-flag-checkered"></i> Performance par Circuit</h3>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             ${filterButtons}
           </div>
@@ -157,7 +176,7 @@ function generateTrackPerformanceSection(trackStats, selectedCarClass, lastScann
     // Section de debug/info si pas de données
     return `
       <div class="card" style="margin-bottom:24px;">
-        <h3 style="margin:0 0 16px 0;color:var(--accent);">🏁 Performance par Circuit</h3>
+        <h3 style="margin:0 0 16px 0;color:var(--accent);"><i class="fas fa-flag-checkered"></i> Performance par Circuit</h3>
         <div style="padding:16px;background:var(--panel);border-radius:8px;text-align:center;color:var(--muted);">
           <p>Aucune donnée de circuit trouvée.</p>
           ${lastScannedFiles ? `<p style="font-size:12px;">Fichiers scannés: ${lastScannedFiles.length}</p>` : ''}
@@ -177,24 +196,24 @@ function generateRecentSessionsSection(stats) {
     
     return `
       <div class="card">
-        <h3 style="margin:0 0 16px 0;color:var(--accent);">📅 Sessions récentes</h3>
+        <h3 style="margin:0 0 16px 0;color:var(--accent);"><i class="fas fa-calendar-alt"></i> Sessions récentes</h3>
         <div style="display:grid;gap:12px;">
           ${recentSessionCards}
         </div>
         ${stats.recentSessions.length > 5 ? `
           <div style="margin-top:16px;text-align:center;">
-            <button class="btn" onclick="switchView('history')">📊 Voir tout l'historique</button>
+            <button class="btn" onclick="switchView('history')"><i class="fas fa-chart-line"></i> Voir tout l'historique</button>
           </div>
         ` : ''}
       </div>
     `;
   } else {
     return `
-      <div class="card" style="text-align:center;padding:40px;">
-        <div style="font-size:48px;margin-bottom:16px;opacity:0.6;">📊</div>
+      <div class="card no-hover" style="text-align:center;padding:40px;">
+        <div style="font-size:48px;margin-bottom:16px;opacity:0.6;"><i class="fas fa-chart-bar" style="font-size:48px;"></i></div>
         <h3 style="margin-bottom:12px;color:var(--text);">Aucune session trouvée</h3>
         <p style="margin-bottom:20px;color:var(--muted);">Configurez votre dossier de résultats pour voir vos statistiques.</p>
-        <button class="btn primary" onclick="switchView('settings')">⚙️ Configurer le dossier</button>
+        <button class="btn primary" onclick="switchView('settings')"><i class="fas fa-cog"></i> Configurer le dossier</button>
       </div>
     `;
   }
@@ -222,7 +241,7 @@ function generateCarClassPerformanceSection(vehicleStatsByClass) {
     return `
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <h3 style="margin:0;color:var(--accent);">🚗 ${cls}</h3>
+          <h3 style="margin:0;color:var(--accent);"><i class="fas fa-car"></i> ${cls}</h3>
         </div>
         <div style="overflow:auto;">
           <table class="table centered" style="width:100%;">
@@ -246,7 +265,7 @@ function generateCarClassPerformanceSection(vehicleStatsByClass) {
   
   return `
     <div class="card" style="margin-bottom:24px;">
-      <h3 style="margin:0 0 12px 0;color:var(--accent);">🚘 Performances par voiture et par classe</h3>
+      <h3 style="margin:0 0 12px 0;color:var(--accent);"><i class="fas fa-car"></i> Performances par voiture et par classe</h3>
       <div style="display:flex;flex-direction:column;gap:12px;">
         ${sections}
       </div>
@@ -259,8 +278,8 @@ function generateVehicleCardsPage(vehicleStatsByClass) {
   const classNames = Object.keys(vehicleStatsByClass || {});
   if (classNames.length === 0) {
     return `
-      <div class="card" style="text-align:center;padding:40px;">
-        <div style="font-size:48px;margin-bottom:16px;">🚘</div>
+      <div class="card no-hover" style="text-align:center;padding:40px;">
+        <div style="font-size:48px;margin-bottom:16px;"><i class="fas fa-car"></i></div>
         <h3 style="margin-bottom:12px;color:var(--text);">Aucune voiture trouvée</h3>
         <p class="muted">Assurez-vous d'avoir scanné des sessions et d'avoir un pilote configuré.</p>
       </div>
@@ -273,13 +292,13 @@ function generateVehicleCardsPage(vehicleStatsByClass) {
       <div class="card" data-vehicle="${v.vehicleName}" data-class="${cls}" style="cursor:pointer;">
         <div class="row" style="justify-content:space-between;align-items:center;">
           <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:36px;height:36px;border-radius:8px;background:var(--panel);display:flex;align-items:center;justify-content:center;">🏎️</div>
+            <div style="width:36px;height:36px;border-radius:8px;background:var(--panel);display:flex;align-items:center;justify-content:center;"><i class="fas fa-car-side"></i></div>
             <div>
               <div style="font-weight:600;color:var(--text);">${v.vehicleName}</div>
               <div class="muted" style="font-size:12px;">${cls} • ${v.totalLaps ?? 0} tour${(v.totalLaps ?? 0) > 1 ? 's' : ''}</div>
             </div>
           </div>
-          <div class="muted" style="font-size:12px;">Voir détail ➜</div>
+          <div class="muted" style="font-size:12px;">Voir détail <i class="fas fa-arrow-right"></i></div>
         </div>
       </div>
     `).join('');
@@ -295,7 +314,7 @@ function generateVehicleCardsPage(vehicleStatsByClass) {
   return `
     <div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h2 style="margin:0;">🚘 Voitures</h2>
+        <h2 style="margin:0;"><i class="fas fa-car"></i> Voitures</h2>
       </div>
       ${sections}
     </div>
@@ -311,7 +330,7 @@ function generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStat
       <button class="btn" onclick="switchView('vehicles')">⬅️ Retour</button>
       <div class="muted" style="font-size:12px;">Classe: ${carClass}</div>
     </div>
-    <h2 style="margin:0 0 8px 0;">🚗 ${vehicleName}</h2>
+    <h2 style="margin:0 0 8px 0;"><i class="fas fa-car"></i> ${vehicleName}</h2>
   `;
   if (entries.length === 0) {
     return `

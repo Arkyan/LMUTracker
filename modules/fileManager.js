@@ -112,17 +112,28 @@ async function scanConfiguredFolder() {
   const container = document.getElementById('results');
   if (!container) return;
   
-  container.innerHTML = `<h2>Dossier (config): ${folder}</h2><p><span class="spinner"></span> Scan en cours…</p>`;
-  
   // Nouveau flux: d'abord lister les fichiers (métadonnées), sans parser
   const listRes = await window.lmuAPI.listLmuFiles(folder);
   if (listRes.canceled) {
     container.innerHTML = `<p class="muted">Scan annulé: ${listRes.error ?? ''}</p>`;
     return;
   }
+  
   // Trier par plus récent (listRes.filesMeta est déjà trié dans main)
   historyState.filesMetaSorted = Array.isArray(listRes.filesMeta) ? listRes.filesMeta.slice() : [];
   historyState.renderedCount = 0;
+  
+  // Si aucun fichier trouvé, rediriger vers les settings
+  if (historyState.filesMetaSorted.length === 0) {
+    if (window.switchView) {
+      window.switchView('settings');
+    }
+    return;
+  }
+  
+  // Afficher le message de scan seulement si on a des fichiers
+  container.innerHTML = `<h2>Dossier (config): ${folder}</h2><p><span class="spinner"></span> Scan en cours…</p>`;
+  
   // Parser uniquement le premier lot
   const firstBatchPaths = historyState.filesMetaSorted.slice(0, historyState.pageSize).map(m => m.filePath);
   if (firstBatchPaths.length === 0) {
@@ -250,12 +261,12 @@ function renderHistorySkeleton(container, title) {
       <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;">
         <div class="row" style="gap:6px;">
           <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('all')}" onclick="setHistoryFilter('all')">Tous</button>
-          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('race')}" onclick="setHistoryFilter('race')">🏁 Course</button>
-          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('qual')}" onclick="setHistoryFilter('qual')">⏱️ Qualif</button>
-          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('practice')}" onclick="setHistoryFilter('practice')">🧪 Essais</button>
+          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('race')}" onclick="setHistoryFilter('race')"><i class="fas fa-flag-checkered"></i> Course</button>
+          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('qual')}" onclick="setHistoryFilter('qual')">Q</button>
+          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('practice')}" onclick="setHistoryFilter('practice')"><i class="fas fa-flask"></i> Essais</button>
         </div>
-        <button class="btn" onclick="manualRescan()" style="font-size:12px;padding:6px 12px;">🔄 Actualiser</button>
-        <button class="btn" id="btnLoadAllHistory" onclick="loadAllHistory()" style="font-size:12px;padding:6px 12px;">⚡ Charger tout</button>
+        <button class="btn" onclick="manualRescan()" style="font-size:12px;padding:6px 12px;"><i class="fas fa-sync-alt"></i> Actualiser</button>
+        <button class="btn" id="btnLoadAllHistory" onclick="loadAllHistory()" style="font-size:12px;padding:6px 12px;"><i class="fas fa-bolt"></i> Charger tout</button>
       </div>
     </div>
     <div id="historyProgressWrap" style="display:none;margin-bottom:12px;">
@@ -415,6 +426,16 @@ function accumulateParsedBatch(files) {
 // Déterminer le type de session d'un fichier parsé
 function getFileSessionType(file) {
   try {
+    // Extraire le nom du fichier depuis le chemin
+    const filePath = file.filePath || '';
+    const fileName = filePath.split(/[\\/]/).pop() || '';
+    
+    // Vérifier les patterns dans le nom du fichier
+    if (fileName.includes('R1')) return 'race';
+    if (fileName.includes('Q1')) return 'qual';
+    if (fileName.includes('P1')) return 'practice';
+    
+    // Fallback: vérifier dans le nom de session si pas de pattern trouvé
     const rr = window.LMUXMLParser ? window.LMUXMLParser.getRaceResultsRoot(file.parsed) : null;
     const picked = rr && window.LMUXMLParser ? window.LMUXMLParser.pickSession(rr) : null;
     const name = (picked && picked.name || '').toLowerCase();
@@ -555,17 +576,6 @@ function setupCardEvents(container) {
   container.querySelectorAll('[data-file-path]').forEach(card => {
     const filePath = card.getAttribute('data-file-path');
     if (!filePath) return;
-    
-    // Effets de survol
-    card.addEventListener('mouseenter', () => {
-      card.style.transform = 'translateY(-2px)';
-      card.style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)';
-    });
-    
-    card.addEventListener('mouseleave', () => {
-      card.style.transform = 'translateY(0)';
-      card.style.boxShadow = '';
-    });
     
     // Rendu in-place de la session (SPA) sans rechargement
     card.addEventListener('click', async () => {

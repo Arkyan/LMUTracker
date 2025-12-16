@@ -34,9 +34,9 @@ function generateSessionCard(file) {
     finalLaps = window.LMUUtils?.toNumber ? window.LMUUtils.toNumber(fallbackLaps) : NaN;
   }
 
-  const raceLaps = isFinite(finalLaps) && finalLaps > 0 ? `🔄 Tours : ${finalLaps}` : null;
+  const raceLaps = isFinite(finalLaps) && finalLaps > 0 ? `<i class="fas fa-redo"></i> Tours : ${finalLaps}` : null;
   const trackLength = rr?.TrackLength ? 
-    `📏 Circuit : ${parseFloat(rr.TrackLength).toFixed(1)}m` : null;
+    `<i class="fas fa-ruler"></i> Circuit : ${parseFloat(rr.TrackLength).toFixed(1)}m` : null;
   
   // Extraire les informations de voiture et classe du pilote configuré dans les paramètres
   let carInfo = null;
@@ -63,7 +63,7 @@ function generateSessionCard(file) {
         carInfo = `${car}`;
       }
       if (carClass) {
-        const classDetails = getClassInfo ? getClassInfo(carClass) : { icon: '🏁', color: 'var(--accent)' };
+        const classDetails = getClassInfo ? getClassInfo(carClass) : { icon: '<i class="fas fa-flag-checkered"></i>', color: 'var(--accent)' };
         classInfo = `<span style="background:${classDetails.color};color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;">${carClass}</span>`;
       }
     }
@@ -81,20 +81,20 @@ function generateSessionCard(file) {
   return `<div class="card" style="cursor:${disabled ? 'not-allowed' : 'pointer'};opacity:${disabled ? 0.6 : 1};transition:transform 0.2s, box-shadow 0.2s;" data-file-path="${disabled ? '' : encodeURIComponent(file.filePath)}">
     <div style="margin-bottom:12px;">
       <div style="font-weight:700;color:var(--text);font-size:18px;margin-bottom:4px;">
-        🏁 ${event}
+        <i class="fas fa-flag-checkered"></i> ${event}
       </div>
       <div style="color:var(--muted);font-size:14px;margin-bottom:8px;">
-        📍 ${venue}
+        <i class="fas fa-map-marker-alt"></i> ${venue}
       </div>
       <div style="color:var(--muted);font-size:12px;margin-bottom:8px;">
-        📅 ${timeString}
+        <i class="fas fa-calendar-alt"></i> ${timeString}
       </div>
       ${vehicleInfo ? `<div style="margin-bottom:8px;">${vehicleInfo}</div>` : ''}
       ${statsChips ? `<div style="margin-bottom:8px;">${statsChips}</div>` : ''}
       <div style="color:var(--muted);font-size:10px;word-break:break-all;">
-        📄 ${fileName}
+        <i class="fas fa-file"></i> ${fileName}
       </div>
-      ${file.error ? `<div style="color:var(--err);font-size:12px;margin-top:8px;">❌ ${file.error}</div>` : ''}
+      ${file.error ? `<div style="color:var(--err);font-size:12px;margin-top:8px;"><i class="fas fa-times-circle"></i> ${file.error}</div>` : ''}
     </div>
     ${disabled ? '<span class="chip" style="background:var(--err);color:#000;">Erreur</span>' : '<span class="chip" style="background:var(--brand);color:#fff;">Voir les stats →</span>'}
   </div>`;
@@ -108,8 +108,8 @@ function generateRecentSessionCards(sessions) {
     
     // Badge pour le mode de jeu
     const gameModeBadge = session.gameMode === 'Multijoueur' 
-      ? '<span style="background:#8b5cf6;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;">🌐 MULTI</span>'
-      : '<span style="background:#64748b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;">👤 SOLO</span>';
+      ? '<span style="background:#8b5cf6;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;"><i class="fas fa-globe"></i> MULTI</span>'
+      : '<span style="background:#64748b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;"><i class="fas fa-user"></i> SOLO</span>';
     
     cards.push(`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--panel);border-radius:8px;">
@@ -154,25 +154,25 @@ function generateTrackCards(trackStatsEntries, carClass = 'Hyper') {
     cards.push(`
     <div style="padding:16px;background:var(--panel);border-radius:8px;border:2px solid var(--border);border-left:4px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,0.1);">
       <div style="margin-bottom:12px;">
-        <div style="font-weight:600;color:var(--text);margin-bottom:6px;">🏎️ ${track.trackName}</div>
+        <div style="font-weight:600;color:var(--text);margin-bottom:6px;"><i class="fas fa-road"></i> ${track.trackName}</div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
-          <span style="font-size:12px;color:var(--muted);">📊 ${sessionCount} session(s)</span>
-          <span style="font-size:12px;color:var(--muted);">🔄 ${lapCount} tour(s)</span>
-          <span style="font-size:12px;color:var(--muted);">📅 ${lastSessionText}</span>
-          <span style="font-size:12px;color:var(--accent);font-weight:600;">🏁 ${carClass}</span>
+          <span style="font-size:12px;color:var(--muted);"><i class="fas fa-chart-line"></i> ${sessionCount} session(s)</span>
+          <span style="font-size:12px;color:var(--muted);"><i class="fas fa-redo"></i> ${lapCount} tour(s)</span>
+          <span style="font-size:12px;color:var(--muted);"><i class="fas fa-calendar-alt"></i> ${lastSessionText}</span>
+          <span style="font-size:12px;color:var(--accent);font-weight:600;"><i class="fas fa-flag-checkered"></i> ${carClass}</span>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center;">
         <div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">⏱️ MEILLEUR</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;"><i class="fas fa-stopwatch"></i> MEILLEUR</div>
           <div style="font-weight:600;color:var(--ok);font-size:14px;">${bestLapText}</div>
         </div>
         <div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">📊 MOYENNE</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;"><i class="fas fa-chart-line"></i> MOYENNE</div>
           <div style="font-weight:600;color:var(--text);font-size:14px;">${avgLapText}</div>
         </div>
         <div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">🚀 V.MAX</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;"><i class="fas fa-tachometer-alt"></i> V.MAX</div>
           <div style="font-weight:600;color:var(--accent);font-size:14px;">${topSpeedText}</div>
         </div>
       </div>
@@ -185,17 +185,17 @@ function generateTrackCards(trackStatsEntries, carClass = 'Hyper') {
 function generateClassFilterButtons(selectedCarClass) {
   const classes = ['Hyper','LMP2_ELMS', 'LMP2', 'LMP3', 'GT3', 'GTE'];
   const classIcons = {
-    'Hyper': '⚡',
-    'LMP2': '🚀', 
-    'LMP2_ELMS': '🚀',
-    'LMP3': '🏃',
-    'GT3': '🏎️',
-    'GTE': '🔥'
+    'Hyper': '<i class="fas fa-bolt"></i>',
+    'LMP2': '<i class="fas fa-rocket"></i>', 
+    'LMP2_ELMS': '<i class="fas fa-rocket"></i>',
+    'LMP3': '<i class="fas fa-running"></i>',
+    'GT3': '<i class="fas fa-car-side"></i>',
+    'GTE': '<i class="fas fa-fire"></i>'
   };
   
   return classes.map(carClass => {
     const isActive = selectedCarClass === carClass;
-    const icon = classIcons[carClass] || '🏁';
+    const icon = classIcons[carClass] || '<i class="fas fa-flag-checkered"></i>';
     return `
       <button 
         class="btn ${isActive ? 'primary' : ''}" 
@@ -216,18 +216,18 @@ function renderSessionInto(container, fileLabel, session) {
   
   // En-tête de session
   html += `<div style="background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(167,139,250,0.1));border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;">
-    <div style="font-size:18px;font-weight:600;margin-bottom:8px;color:var(--accent);">🏁 ${meta.event || 'Session'}</div>
+    <div style="font-size:18px;font-weight:600;margin-bottom:8px;color:var(--accent);"><i class="fas fa-flag-checkered"></i> ${meta.event || 'Session'}</div>
     <div class="row" style="gap:16px;flex-wrap:wrap;">
-      <span class="chip">🏎️ ${meta.track || ''}</span>
-      <span class="chip">📅 ${meta.session}</span>
-      <span class="chip">🕐 ${meta.time || ''}</span>
-      <span class="chip">🔄 Tours max: ${isFinite(meta.mostLaps) ? meta.mostLaps : '—'}</span>
+      <span class="chip"><i class="fas fa-road"></i> ${meta.track || ''}</span>
+      <span class="chip"><i class="fas fa-calendar-alt"></i> ${meta.session}</span>
+      <span class="chip"><i class="fas fa-clock"></i> ${meta.time || ''}</span>
+      <span class="chip"><i class="fas fa-redo"></i> Tours max: ${isFinite(meta.mostLaps) ? meta.mostLaps : '—'}</span>
     </div>
   </div>`;
   
   // Tableau des résultats (plein largeur du conteneur)
   html += `<table class="table centered" style="width:100%;"><thead><tr>
-    <th>🏆</th><th>Pilote</th><th>Classe</th><th>Voiture</th><th>⏱️ Meilleur</th><th>📊 Moyenne</th><th>🔄 Tours</th><th>⛽ Pits</th><th>🚀 V.Max</th><th>🏁 Statut</th>
+    <th><i class="fas fa-trophy"></i></th><th>Pilote</th><th>Classe</th><th>Voiture</th><th><i class="fas fa-stopwatch"></i> Meilleur</th><th><i class="fas fa-chart-line"></i> Moyenne</th><th><i class="fas fa-redo"></i> Tours</th><th><i class="fas fa-gas-pump"></i> Pits</th><th><i class="fas fa-tachometer-alt"></i> V.Max</th><th><i class="fas fa-flag-checkered"></i> Statut</th>
   </tr></thead><tbody>`;
   
   // Grouper les pilotes par classe pour affichage séparé
@@ -268,11 +268,11 @@ function renderSessionInto(container, fileLabel, session) {
     const finishStatus = d.finishStatus || 'N/A';
     let statusDisplay = '';
     if (finishStatus === 'Finished Normally') {
-      statusDisplay = `<span class="chip" style="background:#22c55e;color:#fff;border:none;font-weight:600;font-size:11px;">✅ FINI</span>`;
+      statusDisplay = `<span class="chip" style="background:#22c55e;color:#fff;border:none;font-weight:600;font-size:11px;"><i class="fas fa-check"></i> FINI</span>`;
     } else if (finishStatus === 'DNF') {
-      statusDisplay = `<span class="chip" style="background:#ef4444;color:#fff;border:none;font-weight:600;font-size:11px;">❌ DNF</span>`;
+      statusDisplay = `<span class="chip" style="background:#ef4444;color:#fff;border:none;font-weight:600;font-size:11px;"><i class="fas fa-times"></i> DNF</span>`;
     } else {
-      statusDisplay = `<span class="chip" style="background:var(--muted);color:#fff;border:none;font-weight:600;font-size:11px;">❓ ${finishStatus}</span>`;
+      statusDisplay = `<span class="chip" style="background:var(--muted);color:#fff;border:none;font-weight:600;font-size:11px;"><i class="fas fa-question"></i> ${finishStatus}</span>`;
     }
     
     html += `<tr class="section-header" data-target="${driverId}" style="cursor:pointer;">
@@ -290,7 +290,7 @@ function renderSessionInto(container, fileLabel, session) {
     <tr class="section-content" id="${driverId}" style="display:none;">
       <td colspan="10">
         <div class="card" style="margin:8px;background:var(--panel);">
-          <div style="font-weight:600;margin-bottom:12px;color:var(--accent);">📋 Tours détaillés</div>
+          <div style="font-weight:600;margin-bottom:12px;color:var(--accent);"><i class="fas fa-clipboard-list"></i> Tours détaillés</div>
           <div style="display:flex;gap:16px;flex-wrap:wrap;">
             ${generateLapDetailsTable(d.laps)}
           </div>
@@ -336,7 +336,7 @@ function generateLapDetailsTable(laps) {
             <td>${isFinite(l.s2) ? l.s2.toFixed(3) : ''}</td>
             <td>${isFinite(l.s3) ? l.s3.toFixed(3) : ''}</td>
             <td>${isFinite(l.topSpeed) && l.topSpeed > 0 ? l.topSpeed.toFixed(1)+' km/h' : '—'}</td>
-            <td>${l.pit ? '<span class="chip" style="background:var(--warn);color:#000;">⛽ Pit</span>' : ''}</td>
+            <td>${l.pit ? '<span class="chip" style="background:var(--warn);color:#000;"><i class="fas fa-gas-pump"></i> Pit</span>' : ''}</td>
           </tr>`).join('')}
         </tbody>
       </table>

@@ -86,33 +86,33 @@ function getClassPriority(carClass) {
 // Obtenir les icônes et couleurs par classe
 function getClassInfo(carClass) {
   const classInfos = {
-    'Hyper': { icon: '⚡', color: '#ef4444' },
-    'LMP2': { icon: '🚀', color: '#f97316' },
-    'LMP2_ELMS': { icon: '🚀', color: '#f97316' },
-    'LMP3': { icon: '🏃', color: '#a855f7' },
-    'GT3': { icon: '🏎️', color: '#22c55e' },
-    'GTE': { icon: '🔥', color: '#eab308' }
+    'Hyper': { icon: '<i class="fas fa-bolt"></i>', color: '#ef4444' },
+    'LMP2': { icon: '<i class="fas fa-rocket"></i>', color: '#f97316' },
+    'LMP2_ELMS': { icon: '<i class="fas fa-rocket"></i>', color: '#f97316' },
+    'LMP3': { icon: '<i class="fas fa-running"></i>', color: '#a855f7' },
+    'GT3': { icon: '<i class="fas fa-car-side"></i>', color: '#22c55e' },
+    'GTE': { icon: '<i class="fas fa-fire"></i>', color: '#eab308' }
   };
-  return classInfos[carClass] || { icon: '🏁', color: 'var(--muted)' };
+  return classInfos[carClass] || { icon: '<i class="fas fa-flag-checkered"></i>', color: 'var(--muted)' };
 }
 
 // Détecter si une session est une course, qualification, etc.
 function getSessionInfo(sessionName) {
   const sessionType = sessionName.toLowerCase();
-  let sessionIcon = '🏎️';
+  let sessionIcon = '<i class="fas fa-car-side"></i>';
   let sessionBadge = '';
   
   if (sessionType.includes('race')) {
-    sessionIcon = '🏁';
+    sessionIcon = '<i class="fas fa-flag-checkered"></i>';
     sessionBadge = '<span style="background:#ef4444;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">COURSE</span>';
   } else if (sessionType.includes('qual')) {
-    sessionIcon = '⏱️';
+    sessionIcon = '<i class="fas fa-stopwatch"></i>';
     sessionBadge = '<span style="background:#f97316;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">QUALIF</span>';
   } else if (sessionType.includes('practice') || sessionType.includes('practise')) {
-    sessionIcon = '🏃';
+    sessionIcon = '<i class="fas fa-running"></i>';
     sessionBadge = '<span style="background:#22c55e;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">PRACTICE</span>';
   } else {
-    sessionIcon = '📊';
+    sessionIcon = '<i class="fas fa-chart-line"></i>';
     sessionBadge = '<span style="background:var(--muted);color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;">SESSION</span>';
   }
   

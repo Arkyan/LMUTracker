@@ -187,6 +187,11 @@ body{
   box-shadow:var(--shadow-lg);
   border-color:var(--accent);
 }
+.card.no-hover:hover{
+  transform:none;
+  box-shadow:var(--shadow-md);
+  border-color:var(--border);
+}
 
 /* Inputs modernes */
 .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}

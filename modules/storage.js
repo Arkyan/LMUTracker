@@ -200,7 +200,7 @@ async function saveSettings() {
   // Feedback visuel
   if (btnSaveSettings) {
     const originalText = btnSaveSettings.textContent;
-    btnSaveSettings.textContent = '✅ Sauvegardé !';
+    btnSaveSettings.textContent = 'Sauvegardé !';
     btnSaveSettings.style.background = 'var(--ok)';
     
     setTimeout(() => {

@@ -106,14 +106,23 @@ function handleViewSwitch(view) {
             <div class="muted">Chargement des sessions…</div>
           </div>
         `;
-        // Écouter une seule fois la mise à jour de l'historique
+        // Écouter une seule fois la mise à jour de l'historique avec timeout
+        let timeoutId;
         const once = (ev) => {
           try { window.removeEventListener('lmu:history-updated', once); } catch(_) {}
+          if (timeoutId) clearTimeout(timeoutId);
           if (window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
             window.LMUProfileManager.generateProfileContent();
           }
         };
         try { window.addEventListener('lmu:history-updated', once, { once: true }); } catch(_) { window.addEventListener('lmu:history-updated', once); }
+        // Timeout de 3 secondes - si aucun fichier n'arrive, afficher le profil quand même
+        timeoutId = setTimeout(() => {
+          try { window.removeEventListener('lmu:history-updated', once); } catch(_) {}
+          if (window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
+            window.LMUProfileManager.generateProfileContent();
+          }
+        }, 3000);
       } else {
         // Générer immédiatement si on a déjà des sessions ou si aucun pilote n'est configuré
         if (window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
@@ -165,14 +174,14 @@ function handleViewSwitch(view) {
       // Afficher un message demandant de scanner
       console.log('Navigation: aucun fichier scanné, affichage du message');
       container.innerHTML = `
-        <div class="card" style="text-align:center;padding:40px;">
-          <div style="font-size:48px;margin-bottom:16px;">📁</div>
+        <div class="card no-hover" style="text-align:center;padding:40px;">
+          <div style="font-size:48px;margin-bottom:16px;"><i class="fas fa-folder-open"></i></div>
           <h3 style="margin-bottom:12px;color:var(--text);">Aucune session chargée</h3>
           <p style="margin-bottom:20px;color:var(--muted);">
             ${folderPath ? `Dossier configuré: ${folderPath}` : 'Aucun dossier configuré'}
           </p>
           <button class="btn primary" onclick="manualRescan()" ${!folderPath ? 'disabled' : ''}>
-            🔄 Scanner les sessions
+            <i class="fas fa-sync-alt"></i> Scanner les sessions
           </button>
           ${!folderPath ? '<p style="margin-top:12px;color:var(--muted);font-size:12px;">Configurez d\'abord un dossier dans les paramètres</p>' : ''}
         </div>
@@ -191,11 +200,11 @@ function handleViewSwitch(view) {
       const files = window.LMUFileManager ? window.LMUFileManager.getLastScannedFiles() : null;
       if (!driverName || !driverName.trim()) {
         container.innerHTML = `
-          <div class="card" style="text-align:center;padding:40px;">
-            <div style="font-size:48px;margin-bottom:16px;">👤</div>
+          <div class="card no-hover" style="text-align:center;padding:40px;">
+            <div style="font-size:48px;margin-bottom:16px;"><i class="fas fa-user"></i></div>
             <h3 style="margin-bottom:12px;color:var(--text);">Aucun pilote configuré</h3>
             <p class="muted" style="margin-bottom:16px;">Renseignez votre nom de pilote (ou plusieurs, séparés par des virgules) pour lister vos voitures.</p>
-            <button class="btn primary" onclick="switchView('settings')">⚙️ Aller aux paramètres</button>
+            <button class="btn primary" onclick="switchView('settings')"><i class="fas fa-cog"></i> Aller aux paramètres</button>
           </div>
         `;
         return;
@@ -207,8 +216,8 @@ function handleViewSwitch(view) {
         // Si pas de sections rendues (aucun véhicule) on affiche un message plus explicite
         if (!html || !html.trim() || !Object.keys(data || {}).some(k => (data[k]||[]).length > 0)) {
           container.innerHTML = `
-            <div class="card" style="text-align:center;padding:40px;">
-              <div style="font-size:48px;margin-bottom:16px;">🚘</div>
+            <div class="card no-hover" style="text-align:center;padding:40px;">
+              <div style="font-size:48px;margin-bottom:16px;"><i class="fas fa-car"></i></div>
               <h3 style="margin-bottom:12px;color:var(--text);">Aucune voiture jouée trouvée</h3>
               <p class="muted">Vérifiez que des sessions ont été scannées et que le nom du pilote correspond à ceux présents dans les fichiers (swaps inclus).</p>
             </div>
@@ -217,10 +226,10 @@ function handleViewSwitch(view) {
           container.innerHTML = html;
         }
       } else {
-        container.innerHTML = '<div class="card">Aucune donnée disponible.</div>';
+        container.innerHTML = '<div class="card no-hover">Aucune donnée disponible.</div>';
       }
     } catch (e) {
-      container.innerHTML = `<div class="card"><p class="muted">Erreur: ${e.message}</p></div>`;
+      container.innerHTML = `<div class="card no-hover"><p class="muted">Erreur: ${e.message}</p></div>`;
     }
     // rendre les cards cliquables vers le détail
     setTimeout(() => {

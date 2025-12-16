@@ -11,5 +11,11 @@ contextBridge.exposeInMainWorld('lmuAPI', {
   writeSettings: (settingsObj) => ipcRenderer.invoke('settings-write', settingsObj),
   // Nouveau: listing meta et parsing par lots
   listLmuFiles: (folderPath) => ipcRenderer.invoke('list-lmu-files', folderPath),
-  parseLmuFiles: (filePaths) => ipcRenderer.invoke('parse-lmu-files', filePaths)
+  parseLmuFiles: (filePaths) => ipcRenderer.invoke('parse-lmu-files', filePaths),
+  // API Base de données
+  dbGetStats: () => ipcRenderer.invoke('db-get-stats'),
+  dbGetAllFiles: () => ipcRenderer.invoke('db-get-all-files'),
+  dbCleanup: () => ipcRenderer.invoke('db-cleanup'),
+  dbGetFileData: (filePath) => ipcRenderer.invoke('db-get-file-data', filePath),
+  dbReset: () => ipcRenderer.invoke('db-reset')
 });
