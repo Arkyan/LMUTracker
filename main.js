@@ -73,8 +73,8 @@ function createWindow() {
   // Choisir l'icône selon la disponibilité (ICO préférable sur Windows)
   const candidateDirs = [
     __dirname,
-    // En production, main.js est généralement dans resources/app
-    // On tente aussi resources/app et resources au cas où
+    // En production avec asar, l'icône est dans app.asar.unpacked
+    path.join(process.resourcesPath || '', 'app.asar.unpacked'),
     path.join(process.resourcesPath || '', 'app'),
     process.resourcesPath || ''
   ].filter(Boolean);

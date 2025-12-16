@@ -1,6 +1,6 @@
 {
   "name": "lmutracker",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -14,13 +14,20 @@
   "build": {
     "appId": "com.lmutracker.app",
     "productName": "LMU Tracker",
-    "asar": false,
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*",
+      "LMUTrackerLogo.ico"
+    ],
+    "afterPack": "build/afterPack.js",
     "directories": {
       "output": "dist"
     },
     "files": [
       "**/*",
       "!**/*.md",
+      "!.env",
+      "!.env.example",
       "LMUTrackerLogo.ico"
     ],
     "win": {
@@ -35,8 +42,8 @@
       "perMachine": false,
       "allowElevation": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": false,
-      "createStartMenuShortcut": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
       "runAfterFinish": true,
       "installerIcon": "LMUTrackerLogo.ico",
       "uninstallerIcon": "LMUTrackerLogo.ico",
@@ -59,6 +66,7 @@
     "dotenv": "^17.2.3",
     "dotenv-cli": "^11.0.0",
     "electron": "^38.2.0",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "rcedit": "^5.0.2"
   }
 }

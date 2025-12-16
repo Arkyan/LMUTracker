@@ -15,7 +15,8 @@
 
   ; Créer des raccourcis en utilisant explicitement l'icône .ico livrée avec l'app.
   ; Important: sur Windows, l'icône affichée dans la barre des tâches dépend souvent du raccourci utilisé pour lancer l'app.
-  StrCpy $0 "$INSTDIR\resources\app\LMUTrackerLogo.ico"
+  ; Avec asar, l'icône est extraite dans app.asar.unpacked
+  StrCpy $0 "$INSTDIR\resources\app.asar.unpacked\LMUTrackerLogo.ico"
   IfFileExists "$0" +2 0
     StrCpy $0 "$INSTDIR\${PRODUCT_FILENAME}.exe"
 
