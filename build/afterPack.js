@@ -1,5 +1,4 @@
 const path = require('path');
-const { rcedit } = require('rcedit');
 
 module.exports = async function(context) {
   // Seulement pour Windows
@@ -16,6 +15,7 @@ module.exports = async function(context) {
   console.log('Icône:', iconPath);
 
   try {
+    const { rcedit } = await import('rcedit');
     await rcedit(exePath, {
       icon: iconPath
     });

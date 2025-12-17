@@ -10,7 +10,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "LMU Tracker - Application de suivi et d'analyse de données LMU",
   "build": {
     "appId": "com.lmutracker.app",
     "productName": "LMU Tracker",
