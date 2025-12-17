@@ -60,7 +60,7 @@
   "dependencies": {
     "better-sqlite3": "^12.5.0",
     "electron-updater": "^6.6.2",
-    "fast-xml-parser": "^5.2.5"
+    "fast-xml-parser": "^5.3.3"
   },
   "devDependencies": {
     "dotenv": "^17.2.3",
