@@ -275,6 +275,7 @@ function generateCarClassPerformanceSection(vehicleStatsByClass) {
 
 // Page Voitures: grille de cards (sans stats), groupées par classe
 function generateVehicleCardsPage(vehicleStatsByClass) {
+  const { fmtTime, getClassInfo } = window.LMUUtils || {};
   const classNames = Object.keys(vehicleStatsByClass || {});
   if (classNames.length === 0) {
     return `
@@ -288,24 +289,46 @@ function generateVehicleCardsPage(vehicleStatsByClass) {
   const sections = classNames.sort((a,b) => (window.LMUUtils?.getClassPriority(a)||999) - (window.LMUUtils?.getClassPriority(b)||999)).map(cls => {
     const vehicles = vehicleStatsByClass[cls] || [];
     if (vehicles.length === 0) return '';
-    const cards = vehicles.map(v => `
-      <div class="card" data-vehicle="${v.vehicleName}" data-class="${cls}" style="cursor:pointer;">
-        <div class="row" style="justify-content:space-between;align-items:center;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:36px;height:36px;border-radius:8px;background:var(--panel);display:flex;align-items:center;justify-content:center;"><i class="fas fa-car-side"></i></div>
-            <div>
-              <div style="font-weight:600;color:var(--text);">${v.vehicleName}</div>
-              <div class="muted" style="font-size:12px;">${cls} • ${v.totalLaps ?? 0} tour${(v.totalLaps ?? 0) > 1 ? 's' : ''}</div>
+    const classDetails = getClassInfo ? getClassInfo(cls) : { icon: '<i class="fas fa-flag-checkered"></i>', color: 'var(--accent)' };
+    const cards = vehicles.map(v => {
+      const sessionsText = `${v.sessions ?? 0}`;
+      const lapsText = `${v.totalLaps ?? 0}`;
+      const circuitsText = `${v.circuits ?? 0}`;
+
+      return `
+        <div class="vehicle-card" data-vehicle="${v.vehicleName}" data-class="${cls}" role="button" tabindex="0">
+          <div class="vehicle-card__top">
+            <div class="vehicle-card__icon"><i class="fas fa-car-side"></i></div>
+            <div class="vehicle-card__meta">
+              <div class="vehicle-card__title">${v.vehicleName}</div>
+            </div>
+            <div class="vehicle-card__cta">Détails <i class="fas fa-arrow-right"></i></div>
+          </div>
+
+          <div class="vehicle-kpis">
+            <div class="vehicle-kpi">
+              <div class="vehicle-kpi__label">Sessions</div>
+              <div class="vehicle-kpi__value">${sessionsText}</div>
+            </div>
+            <div class="vehicle-kpi">
+              <div class="vehicle-kpi__label">Tours</div>
+              <div class="vehicle-kpi__value">${lapsText}</div>
+            </div>
+            <div class="vehicle-kpi">
+              <div class="vehicle-kpi__label">Circuits</div>
+              <div class="vehicle-kpi__value">${circuitsText}</div>
             </div>
           </div>
-          <div class="muted" style="font-size:12px;">Voir détail <i class="fas fa-arrow-right"></i></div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
     return `
-      <div class="card" style="margin-bottom:16px;">
-        <h3 style="margin:0 0 8px 0;color:var(--accent);">${cls}</h3>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
+      <div class="vehicle-class-section">
+        <div class="vehicle-class-header">
+          <div class="vehicle-class-title" style="color:${classDetails.color};">${classDetails.icon} ${cls}</div>
+          <div class="muted" style="font-size:12px;">${vehicles.length} voiture${vehicles.length > 1 ? 's' : ''}</div>
+        </div>
+        <div class="vehicle-grid">
           ${cards}
         </div>
       </div>
@@ -313,8 +336,11 @@ function generateVehicleCardsPage(vehicleStatsByClass) {
   }).join('');
   return `
     <div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h2 style="margin:0;"><i class="fas fa-car"></i> Voitures</h2>
+      <div class="vehicle-page-header">
+        <div>
+          <h2 style="margin:0;"><i class="fas fa-car"></i> Voitures</h2>
+          <div class="muted" style="margin-top:4px;">Clique sur une voiture pour voir les stats par circuit.</div>
+        </div>
       </div>
       ${sections}
     </div>
@@ -325,12 +351,58 @@ function generateVehicleCardsPage(vehicleStatsByClass) {
 function generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStats) {
   const { fmtTime } = window.LMUUtils || {};
   const entries = Object.values(trackStats || {});
+
+  const bestOverall = entries.reduce((min, t) => (isFinite(t.bestLap) && t.bestLap > 0) ? Math.min(min, t.bestLap) : min, Infinity);
+  const topSpeedOverall = entries.reduce((max, t) => (isFinite(t.topSpeed) && t.topSpeed > 0) ? Math.max(max, t.topSpeed) : max, 0);
+  const sessionsOverall = entries.reduce((sum, t) => sum + (t.sessions || 0), 0);
+  const lapsOverall = entries.reduce((sum, t) => sum + (t.totalLaps || 0), 0);
+
+  let weightedAvg = NaN;
+  if (lapsOverall > 0) {
+    const weightedSum = entries.reduce((sum, t) => {
+      const laps = t.totalLaps || 0;
+      return sum + (isFinite(t.avgLap) ? (t.avgLap * laps) : 0);
+    }, 0);
+    weightedAvg = weightedSum > 0 ? (weightedSum / lapsOverall) : NaN;
+  } else {
+    const avgs = entries.map(t => t.avgLap).filter(v => isFinite(v) && v > 0);
+    if (avgs.length > 0) weightedAvg = avgs.reduce((a,b)=>a+b,0) / avgs.length;
+  }
+
   const header = `
-    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
-      <button class="btn" onclick="switchView('vehicles')">Retour</button>
-      <div class="muted" style="font-size:12px;">Classe: ${carClass}</div>
+    <div class="vehicle-detail-header">
+      <button class="btn" onclick="switchView('vehicles')"><i class="fas fa-arrow-left"></i> Retour</button>
+      <div class="vehicle-badge" style="background:var(--accent);"><i class="fas fa-flag-checkered"></i> ${carClass}</div>
     </div>
-    <h2 style="margin:0 0 8px 0;"><i class="fas fa-car"></i> ${vehicleName}</h2>
+    <div class="vehicle-detail-hero">
+      <div class="vehicle-detail-hero__title"><i class="fas fa-car"></i> ${vehicleName}</div>
+      <div class="vehicle-detail-kpis">
+        <div class="vehicle-kpi">
+          <div class="vehicle-kpi__label">Circuits</div>
+          <div class="vehicle-kpi__value">${entries.length}</div>
+        </div>
+        <div class="vehicle-kpi">
+          <div class="vehicle-kpi__label">Sessions</div>
+          <div class="vehicle-kpi__value">${sessionsOverall}</div>
+        </div>
+        <div class="vehicle-kpi">
+          <div class="vehicle-kpi__label">Tours</div>
+          <div class="vehicle-kpi__value">${lapsOverall}</div>
+        </div>
+        <div class="vehicle-kpi">
+          <div class="vehicle-kpi__label">Meilleur</div>
+          <div class="vehicle-kpi__value vehicle-kpi__value--ok">${(fmtTime && isFinite(bestOverall) && bestOverall !== Infinity) ? fmtTime(bestOverall) : '—'}</div>
+        </div>
+        <div class="vehicle-kpi">
+          <div class="vehicle-kpi__label">Moyenne</div>
+          <div class="vehicle-kpi__value">${(fmtTime && isFinite(weightedAvg)) ? fmtTime(weightedAvg) : '—'}</div>
+        </div>
+        <div class="vehicle-kpi">
+          <div class="vehicle-kpi__label">V.Max</div>
+          <div class="vehicle-kpi__value vehicle-kpi__value--accent">${(isFinite(topSpeedOverall) && topSpeedOverall > 0) ? `${Math.round(topSpeedOverall)} km/h` : '—'}</div>
+        </div>
+      </div>
+    </div>
   `;
   if (entries.length === 0) {
     return `

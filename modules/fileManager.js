@@ -308,7 +308,7 @@ function renderHistorySkeleton(container, title) {
     </div>
     <div id="historyGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>
     <div id="historyLoadMore" style="margin-top:16px;text-align:center;">
-      <button class="btn" id="btnLoadMoreHistory" onclick="loadMoreHistory()">⬇️ Charger plus</button>
+      <button class="btn" id="btnLoadMoreHistory" onclick="loadMoreHistory()">Charger plus</button>
     </div>
   `;
   container.innerHTML = skeleton;

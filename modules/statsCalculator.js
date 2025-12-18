@@ -293,6 +293,8 @@ function calculateVehicleStatsByClass(driverName, lastScannedFiles) {
   for (const file of lastScannedFiles) {
     if (file.error) continue;
     try {
+      const rr = getRaceResultsRoot(file.parsed);
+      const trackCourse = rr?.TrackCourse || rr?.TrackVenue || 'Circuit inconnu';
       const session = extractSession(file.parsed);
       if (!session) continue;
       const myDriver = session.drivers.find(d => {
@@ -314,11 +316,13 @@ function calculateVehicleStatsByClass(driverName, lastScannedFiles) {
           avgLap: 0,
           allValidLaps: [],
           topSpeed: 0,
-          totalLaps: 0
+          totalLaps: 0,
+          _tracks: new Set()
         };
       }
       const v = result[carClass][vehicleName];
       v.sessions++;
+      try { v._tracks.add(trackCourse); } catch (_) {}
       if (isFinite(myDriver.bestLapSec) && myDriver.bestLapSec > 0 && myDriver.bestLapSec < v.bestLap) {
         v.bestLap = myDriver.bestLapSec;
       }
@@ -344,7 +348,13 @@ function calculateVehicleStatsByClass(driverName, lastScannedFiles) {
       } else {
         o.avgLap = NaN;
       }
+      try {
+        o.circuits = o._tracks ? o._tracks.size : 0;
+      } catch (_) {
+        o.circuits = 0;
+      }
       delete o.allValidLaps;
+      delete o._tracks;
       if (o.bestLap === Infinity) o.bestLap = NaN;
       return o;
     }).sort((a, b) => b.sessions - a.sessions);

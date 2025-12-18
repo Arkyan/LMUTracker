@@ -34,10 +34,6 @@ function generateSessionCard(file) {
     finalLaps = window.LMUUtils?.toNumber ? window.LMUUtils.toNumber(fallbackLaps) : NaN;
   }
 
-  const raceLaps = isFinite(finalLaps) && finalLaps > 0 ? `<i class="fas fa-redo"></i> Tours : ${finalLaps}` : null;
-  const trackLength = rr?.TrackLength ? 
-    `<i class="fas fa-ruler"></i> Circuit : ${parseFloat(rr.TrackLength).toFixed(1)}m` : null;
-  
   // Extraire les informations de voiture et classe du pilote configuré dans les paramètres
   let carInfo = null;
   let classInfo = null;
@@ -72,9 +68,6 @@ function generateSessionCard(file) {
   const fileName = file.filePath.split(/\\|\//).pop();
   const disabled = !!file.error;
   
-  const statsChips = [raceTime, raceLaps, trackLength].filter(Boolean)
-    .map(stat => `<span class="chip" style="font-size:11px;">${stat}</span>`).join(' ');
-  
   // Informations de voiture et classe
   const vehicleInfo = [carInfo, classInfo].filter(Boolean).join(' ');
   
@@ -90,7 +83,6 @@ function generateSessionCard(file) {
         <i class="fas fa-calendar-alt"></i> ${timeString}
       </div>
       ${vehicleInfo ? `<div style="margin-bottom:8px;">${vehicleInfo}</div>` : ''}
-      ${statsChips ? `<div style="margin-bottom:8px;">${statsChips}</div>` : ''}
       <div style="color:var(--muted);font-size:10px;word-break:break-all;">
         <i class="fas fa-file"></i> ${fileName}
       </div>

@@ -240,6 +240,14 @@ function handleViewSwitch(view) {
             const carClass = el.getAttribute('data-class');
             navigateToVehicleDetail(vehicleName, carClass);
           });
+          el.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter' || ev.key === ' ') {
+              ev.preventDefault();
+              const vehicleName = el.getAttribute('data-vehicle');
+              const carClass = el.getAttribute('data-class');
+              navigateToVehicleDetail(vehicleName, carClass);
+            }
+          });
           el.style.cursor = 'pointer';
         });
       } catch (_) {}
