@@ -20,6 +20,16 @@
   --radius:8px;
   --radius-sm:6px;
   --radius-lg:12px;
+
+  /* Aliases de compatibilité (utilisés par du HTML inline / anciens modules) */
+  --brand: var(--accent);
+  --text: var(--text-primary);
+  --muted: var(--text-muted);
+  --ok: var(--success);
+  --err: var(--danger);
+  --shadow-sm: var(--shadow);
+  --shadow-md: var(--shadow-lg);
+  --accent-glow: var(--accent-dim);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow-x:hidden}

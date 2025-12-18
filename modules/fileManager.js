@@ -691,7 +691,7 @@ async function renderSessionInPlace(absFilePath) {
   if (!container) return;
   
     container.innerHTML = `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
-      <button class="btn" id="btnBackToHistory">⬅️ Retour</button>
+      <button class="btn" id="btnBackToHistory">Retour</button>
       <span class="muted" style="font-size:12px;word-break:break-all;">${absFilePath}</span>
     </div>
     <div id="sessionView" class="card"><span class="spinner"></span> Chargement de la session…</div>`;

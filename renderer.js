@@ -3,14 +3,9 @@
  * Coordonne les différents modules de l'application
  */
 
-(function() {
-  // Variables globales pour compatibilité avec l'application
-  let lastScannedFiles = null;
-  let lastSession = null;
-  let cachedStats = null;
-  let cachedTrackStats = null;
-  let selectedCarClass = 'Hyper';
-})();
+// Note: les états applicatifs (sessions, sélection de classe, etc.) sont gérés
+// par les modules (FileManager/Navigation/Storage/StatsCalculator). Garder
+// renderer.js comme orchestrateur, sans variables globales dupliquées.
 
 // Initialisation de l'application
 document.addEventListener('DOMContentLoaded', function() {
@@ -275,57 +270,3 @@ function scanConfiguredFolder() {
   }
 }
 
-function switchView(view) {
-  if (window.LMUNavigation && window.LMUNavigation.switchView) {
-    window.LMUNavigation.switchView(view);
-  }
-}
-
-function filterByCarClass(carClass) {
-  if (window.LMUNavigation && window.LMUNavigation.filterByCarClass) {
-    window.LMUNavigation.filterByCarClass(carClass);
-  }
-}
-
-function loadSavedFolder() {
-  if (window.LMUStorage && window.LMUStorage.loadSavedFolder) {
-    return window.LMUStorage.loadSavedFolder();
-  }
-  return '';
-}
-
-function loadSavedDriverName() {
-  if (window.LMUStorage && window.LMUStorage.loadSavedDriverName) {
-    return window.LMUStorage.loadSavedDriverName();
-  }
-  return '';
-}
-
-function getConfiguredDriverName() {
-  if (window.LMUStorage && window.LMUStorage.getConfiguredDriverName) {
-    return window.LMUStorage.getConfiguredDriverName();
-  }
-  return '';
-}
-
-// Proxy pour les autres fonctions qui pourraient être appelées depuis l'extérieur
-function invalidateCache() {
-  if (window.LMUStatsCalculator && window.LMUStatsCalculator.invalidateCache) {
-    window.LMUStatsCalculator.invalidateCache();
-  }
-}
-
-// Synchroniser l'état global avec les modules
-function syncGlobalState() {
-  if (window.LMUFileManager) {
-    lastScannedFiles = window.LMUFileManager.getLastScannedFiles();
-    lastSession = window.LMUFileManager.getLastSession();
-  }
-  
-  if (window.LMUNavigation) {
-    selectedCarClass = window.LMUNavigation.getSelectedCarClass();
-  }
-}
-
-// Appeler la synchronisation régulièrement
-setInterval(syncGlobalState, 1000);

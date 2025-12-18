@@ -102,7 +102,7 @@ function generateWelcomeSection(driverName, stats) {
           <div style="width:64px;height:64px;background:linear-gradient(135deg,var(--brand),var(--accent));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;"><i class="fas fa-flag-checkered"></i></div>
           <div>
             <h2 style="margin:0;font-size:24px;color:var(--text);">Bonjour, ${driverName} !</h2>
-            <p style="margin:4px 0 0 0;color:var(--muted);">Bienvenue dans votre tableau de bord LMU</p>
+            <p style="margin:4px 0 0 0;color:var(--muted);">Bienvenue dans votre tableau de bord Le Mans Ultimate</p>
           </div>
         </div>
         ${stats.totalSessions > 0 ? `
@@ -327,7 +327,7 @@ function generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStat
   const entries = Object.values(trackStats || {});
   const header = `
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
-      <button class="btn" onclick="switchView('vehicles')">⬅️ Retour</button>
+      <button class="btn" onclick="switchView('vehicles')">Retour</button>
       <div class="muted" style="font-size:12px;">Classe: ${carClass}</div>
     </div>
     <h2 style="margin:0 0 8px 0;"><i class="fas fa-car"></i> ${vehicleName}</h2>

@@ -2,7 +2,6 @@
 // À inclure dans votre renderer.js ou créer un module séparé
 
 // Écouter les événements de mise à jour
-window.electronAPI = window.electronAPI || {};
 
 // Mise à jour disponible
 window.electron?.ipcRenderer?.on('update-available', (event, info) => {
@@ -177,9 +176,6 @@ function closeUpdateNotification() {
     notification.remove();
   }
 }
-
-// Variable globale pour suivre l'état de la mise à jour
-let updateDownloaded = false;
 
 // Initialisation au chargement de la page
 document.addEventListener('DOMContentLoaded', async () => {
