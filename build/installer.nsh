@@ -58,12 +58,6 @@
   RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
 !macroend
 
-!macro customRemoveFiles
-  ; Nettoyage de fichiers additionnels si nécessaire
-  ; Par exemple, logs ou fichiers temporaires
-  RMDir /r "$INSTDIR\logs"
-!macroend
-
 ; Page personnalisée (optionnel)
 !ifndef BUILD_UNINSTALLER
   ; Page de choix des raccourcis (après le choix du dossier d'installation)
