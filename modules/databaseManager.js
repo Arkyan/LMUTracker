@@ -496,6 +496,21 @@
     }
   }
 
+  // Récupérer uniquement les champs de date/heure d'un fichier (léger)
+  function getFileTimeInfo(filePath) {
+    if (!db) return null;
+    try {
+      return db.prepare(`
+        SELECT date_time, time_string
+        FROM file_metadata
+        WHERE file_path = ?
+      `).get(filePath);
+    } catch (error) {
+      console.error('[DB] Erreur lors de la récupération de la date du fichier:', error);
+      return null;
+    }
+  }
+
   // Nettoyer les fichiers qui n'existent plus
   function cleanupMissingFiles() {
     if (!db) return { ok: false, error: 'Base de données non initialisée' };
@@ -638,6 +653,7 @@
     indexFile,
     getFileData,
     getAllFileMetadata,
+    getFileTimeInfo,
     cleanupMissingFiles,
     resetDatabase,
     closeDatabase,

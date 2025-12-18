@@ -17,6 +17,9 @@ let lastSession = null; // session extraite du fichier affiché
     title: 'Sessions trouvées',
     cacheParams: null,
     filter: 'all', // all | race | qual | practice
+    // Par défaut, ne montrer que les sessions où le pilote configuré est présent
+    // (si un pilote est configuré). Un bouton permet de basculer sur "Afficher tout".
+    driverOnly: false,
     isAutoLoading: false,
     autoLoadBatchCounter: 0
   };
@@ -121,6 +124,14 @@ async function scanConfiguredFolder() {
   
   // Trier par plus récent (listRes.filesMeta est déjà trié dans main)
   historyState.filesMetaSorted = Array.isArray(listRes.filesMeta) ? listRes.filesMeta.slice() : [];
+  // Garantir l'ordre: plus récent en premier
+  try {
+    historyState.filesMetaSorted.sort((a, b) => {
+      const aTime = (a && isFinite(a.sessionTimeMs) ? a.sessionTimeMs : (a && isFinite(a.mtimeMs) ? a.mtimeMs : (a && a.mtimeIso ? Date.parse(a.mtimeIso) : 0))) || 0;
+      const bTime = (b && isFinite(b.sessionTimeMs) ? b.sessionTimeMs : (b && isFinite(b.mtimeMs) ? b.mtimeMs : (b && b.mtimeIso ? Date.parse(b.mtimeIso) : 0))) || 0;
+      return bTime - aTime;
+    });
+  } catch (_) {}
   historyState.renderedCount = 0;
   
   // Si aucun fichier trouvé, rediriger vers les settings
@@ -170,18 +181,35 @@ async function scanConfiguredFolder() {
 
 // Afficher les fichiers scannés
 function displayScannedFiles(files, title, isNewScan = true) {
-  lastScannedFiles = files;
+  // Sur un nouveau scan (ou ouverture de dossier), afficher les plus récents en premier
+  const orderedFiles = Array.isArray(files) ? files.slice() : [];
+  if (isNewScan) {
+    try {
+      orderedFiles.sort((a, b) => {
+        const aTime = (a && isFinite(a.sessionTimeMs) ? a.sessionTimeMs : (a && isFinite(a.mtimeMs) ? a.mtimeMs : (a && a.mtimeIso ? Date.parse(a.mtimeIso) : 0))) || 0;
+        const bTime = (b && isFinite(b.sessionTimeMs) ? b.sessionTimeMs : (b && isFinite(b.mtimeMs) ? b.mtimeMs : (b && b.mtimeIso ? Date.parse(b.mtimeIso) : 0))) || 0;
+        return bTime - aTime;
+      });
+    } catch (_) {}
+  }
+  lastScannedFiles = orderedFiles;
   
   const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
   const folderPath = window.LMUStorage ? window.LMUStorage.getConfiguredResultsFolder() : '';
+
+  // Nouveau scan: état par défaut demandé
+  if (isNewScan) {
+    historyState.driverOnly = !!(driverName && driverName.trim());
+  }
   
   // Paramètres pour le cache
   const cacheParams = {
     driverName,
-    filesLength: files.length,
+    filesLength: orderedFiles.length,
     folderPath,
     title,
-    filter: historyState.filter
+    filter: historyState.filter,
+    driverOnly: !!historyState.driverOnly
   };
   historyState.cacheParams = cacheParams;
   
@@ -215,7 +243,7 @@ function displayScannedFiles(files, title, isNewScan = true) {
   // Les fichiers fournis sont déjà le lot courant à afficher; ne pas re-trier ici.
   // Conserver dans lastScannedFiles; renderedCount est géré lors du scan initial et des chargements.
   if (isNewScan) {
-    historyState.renderedCount = files.length;
+    historyState.renderedCount = orderedFiles.length;
   }
   historyState.title = title;
   
@@ -225,8 +253,8 @@ function displayScannedFiles(files, title, isNewScan = true) {
   // Rendre le squelette (header + grille + bouton 'Charger plus' + filtres)
   renderHistorySkeleton(container, title);
   // Accumuler les fichiers parsés et n'afficher que ceux correspondant au filtre
-  accumulateParsedBatch(files);
-  const filtered = filterFilesForHistory(files);
+  accumulateParsedBatch(orderedFiles);
+  const filtered = filterFilesForHistory(orderedFiles);
   appendHistoryCards(filtered);
   updateLoadMoreVisibility();
   // Assurer que la barre de progression est masquée au rendu initial
@@ -254,19 +282,22 @@ function displayScannedFiles(files, title, isNewScan = true) {
 
 // Rendre l'entête et la grille vide + bouton 'Charger plus'
 function renderHistorySkeleton(container, title) {
-  const isActive = (k) => historyState.filter === k ? 'background:var(--brand);color:#fff;' : 'background:var(--panel);color:var(--text);';
+  const configuredDriverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+  const hasConfiguredDriver = !!(configuredDriverName && configuredDriverName.trim());
+  const driverToggleLabel = historyState.driverOnly ? 'Afficher tous' : 'Afficher seulement le pilote';
+  const isSelected = (k) => historyState.filter === k ? 'selected' : '';
   const skeleton = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
       <h2 style="margin:0;">${title}</h2>
       <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap;">
-        <div class="row" style="gap:6px;">
-          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('all')}" onclick="setHistoryFilter('all')">Tous</button>
-          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('race')}" onclick="setHistoryFilter('race')"><i class="fas fa-flag-checkered"></i> Course</button>
-          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('qual')}" onclick="setHistoryFilter('qual')">Q</button>
-          <button class="btn" style="font-size:12px;padding:6px 10px;${isActive('practice')}" onclick="setHistoryFilter('practice')"><i class="fas fa-flask"></i> Essais</button>
-        </div>
+        <select aria-label="Type de session" style="min-width:220px;flex:0;" onchange="setHistoryFilter(this.value)">
+          <option value="all" ${isSelected('all')}>Tous</option>
+          <option value="race" ${isSelected('race')}>Course</option>
+          <option value="qual" ${isSelected('qual')}>Qualif</option>
+          <option value="practice" ${isSelected('practice')}>Essais</option>
+        </select>
+        ${hasConfiguredDriver ? `<button class="btn" onclick="toggleHistoryDriverOnly()" style="font-size:12px;padding:6px 12px;">${driverToggleLabel}</button>` : ''}
         <button class="btn" onclick="manualRescan()" style="font-size:12px;padding:6px 12px;"><i class="fas fa-sync-alt"></i> Actualiser</button>
-        <button class="btn" id="btnLoadAllHistory" onclick="loadAllHistory()" style="font-size:12px;padding:6px 12px;"><i class="fas fa-bolt"></i> Charger tout</button>
       </div>
     </div>
     <div id="historyProgressWrap" style="display:none;margin-bottom:12px;">
@@ -449,14 +480,58 @@ function getFileSessionType(file) {
 
 // Filtrer une liste (lot) selon le filtre courant
 function filterFilesForHistory(list) {
-  if (historyState.filter === 'all') return list;
-  const want = historyState.filter;
+  const configuredDriverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+  const mustContainDriver = !!(historyState.driverOnly && configuredDriverName && configuredDriverName.trim());
+
+  const wantType = historyState.filter;
   const out = [];
+
   for (const f of list) {
-    const t = getFileSessionType(f);
-    if (t === want) out.push(f);
+    if (wantType !== 'all') {
+      const t = getFileSessionType(f);
+      if (t !== wantType) continue;
+    }
+
+    if (mustContainDriver && !fileContainsConfiguredDriver(f, configuredDriverName)) {
+      continue;
+    }
+
+    out.push(f);
   }
+
   return out;
+}
+
+function fileContainsConfiguredDriver(file, configuredDriverName) {
+  try {
+    if (!file || !file.parsed || !configuredDriverName) return false;
+    const needle = String(configuredDriverName).trim().toLowerCase();
+    if (!needle) return false;
+
+    // Option robuste: utiliser l'extracteur de session (déjà utilisé ailleurs pour les stats)
+    const session = window.LMUXMLParser ? window.LMUXMLParser.extractSession(file.parsed) : null;
+    if (session && Array.isArray(session.drivers)) {
+      return session.drivers.some(d => {
+        const name = (d && (d.displayName || d.name || ''));
+        const team = (d && (d.team || d.vehicle || ''));
+        const hay = `${name} ${team}`.toLowerCase();
+        return hay.includes(needle);
+      });
+    }
+
+    // Fallback simple: inspecter node.Driver si extractSession indisponible
+    const rr = window.LMUXMLParser ? window.LMUXMLParser.getRaceResultsRoot(file.parsed) : null;
+    const picked = rr && window.LMUXMLParser ? window.LMUXMLParser.pickSession(rr) : null;
+    const node = picked && picked.node;
+    if (!node || !node.Driver) return false;
+    const drivers = window.LMUUtils && window.LMUUtils.arrayify ? window.LMUUtils.arrayify(node.Driver) : (Array.isArray(node.Driver) ? node.Driver : [node.Driver]);
+    return drivers.some(driver => {
+      const driverName = (driver && driver.Name) ? String(driver.Name) : '';
+      return driverName.toLowerCase().includes(needle);
+    });
+  } catch (_) {
+    return false;
+  }
 }
 
 function appendHistoryCards(files) {
@@ -542,11 +617,33 @@ function setHistoryFilter(filter) {
   historyState.filter = filter;
   const container = document.getElementById('results');
   if (!container) return;
+  try {
+    if (historyState && historyState.cacheParams) {
+      historyState.cacheParams.filter = historyState.filter;
+      historyState.cacheParams.driverOnly = !!historyState.driverOnly;
+    }
+  } catch (_) {}
   // Recréer le header (pour l'état actif des boutons)
   renderHistorySkeleton(container, historyState.title || 'Sessions trouvées');
   const grid = document.getElementById('historyGrid');
   if (!grid) return;
   // Filtrer sur l'ensemble des fichiers parsés à ce stade
+  const list = Array.isArray(lastScannedFiles) ? lastScannedFiles.slice() : [];
+  const filtered = filterFilesForHistory(list);
+  appendHistoryCards(filtered);
+  updateLoadMoreVisibility();
+}
+
+function toggleHistoryDriverOnly() {
+  historyState.driverOnly = !historyState.driverOnly;
+  const container = document.getElementById('results');
+  if (!container) return;
+  try {
+    if (historyState && historyState.cacheParams) {
+      historyState.cacheParams.driverOnly = !!historyState.driverOnly;
+    }
+  } catch (_) {}
+  renderHistorySkeleton(container, historyState.title || 'Sessions trouvées');
   const list = Array.isArray(lastScannedFiles) ? lastScannedFiles.slice() : [];
   const filtered = filterFilesForHistory(list);
   appendHistoryCards(filtered);
@@ -744,6 +841,7 @@ if (typeof window !== 'undefined') {
   window.loadAllHistory = loadAllHistory;
   // Exposer le filtre pour l'onclick des boutons
   window.setHistoryFilter = setHistoryFilter;
+  window.toggleHistoryDriverOnly = toggleHistoryDriverOnly;
 }
 
 if (typeof module !== 'undefined' && module.exports) {

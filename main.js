@@ -375,15 +375,64 @@ ipcMain.handle('list-lmu-files', async (_event, folderPath) => {
   try {
     const files = await getAllXmlFiles(folderPath);
     const metas = [];
+
+    const parseTimeStringToMs = (timeString) => {
+      try {
+        if (!timeString) return null;
+        const m = String(timeString).match(/(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+        if (!m) return null;
+        const [, year, month, day, hour, min, sec] = m;
+        const dt = new Date(
+          Number(year),
+          Number(month) - 1,
+          Number(day),
+          Number(hour),
+          Number(min),
+          Number(sec)
+        );
+        const ms = dt.getTime();
+        return Number.isFinite(ms) ? ms : null;
+      } catch {
+        return null;
+      }
+    };
+
     for (const filePath of files) {
       try {
         const stat = await fs.stat(filePath);
-        metas.push({ filePath, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString() });
+
+        // Si le fichier est indexé et à jour, récupérer la date de session stockée en BDD
+        let sessionTimeMs = null;
+        try {
+          const dbCheck = dbManager.isFileIndexed(filePath, stat);
+          if (dbCheck && dbCheck.indexed && typeof dbManager.getFileTimeInfo === 'function') {
+            const info = dbManager.getFileTimeInfo(filePath);
+            if (info && info.date_time) {
+              sessionTimeMs = parseInt(info.date_time) * 1000;
+            } else if (info && info.time_string) {
+              sessionTimeMs = parseTimeStringToMs(info.time_string);
+            }
+          }
+        } catch (_) {}
+
+        metas.push({
+          filePath,
+          mtimeMs: stat.mtimeMs,
+          mtimeIso: stat.mtime.toISOString(),
+          sessionTimeMs
+        });
       } catch (err) {
         metas.push({ filePath, error: String(err) });
       }
     }
-    metas.sort((a, b) => (b.mtimeMs || 0) - (a.mtimeMs || 0));
+
+    // Tri: date de session (BDD) d'abord, sinon fallback mtime
+    metas.sort((a, b) => {
+      const aT = (a && a.sessionTimeMs) ? a.sessionTimeMs : 0;
+      const bT = (b && b.sessionTimeMs) ? b.sessionTimeMs : 0;
+      if (aT !== bT) return bT - aT;
+      return (b.mtimeMs || 0) - (a.mtimeMs || 0);
+    });
     return { canceled: false, folderPath, count: metas.length, filesMeta: metas };
   } catch (error) {
     return { canceled: true, error: String(error) };
@@ -411,11 +460,19 @@ ipcMain.handle('parse-lmu-files', async (_event, filePaths) => {
           if (dbData) {
             // Convertir les données BDD au format attendu
             const parsed = convertDbDataToParsedFormat(dbData);
+
+            // Enrichir avec la date de session de la BDD (pour tri/affichage côté renderer)
+            let sessionTimeMs = null;
+            try {
+              const dt = dbData && dbData.metadata && dbData.metadata.date_time;
+              if (dt) sessionTimeMs = parseInt(dt) * 1000;
+            } catch (_) {}
             cached.push({ 
               filePath: fp, 
               parsed, 
               mtimeMs: st.mtimeMs, 
               mtimeIso: st.mtime.toISOString(),
+              sessionTimeMs,
               fromDb: true 
             });
           } else {
@@ -449,6 +506,21 @@ ipcMain.handle('parse-lmu-files', async (_event, filePaths) => {
       }
       parsedResults = results;
     }
+
+    // Enrichir les résultats parsés avec une date de session (si disponible)
+    try {
+      parsedResults = (parsedResults || []).map(r => {
+        if (!r || !r.parsed) return r;
+        const rr = r.parsed?.rFactorXML?.RaceResults || r.parsed?.RaceResults;
+        let sessionTimeMs = null;
+        try {
+          if (rr && rr.DateTime) {
+            sessionTimeMs = parseInt(rr.DateTime) * 1000;
+          }
+        } catch (_) {}
+        return { ...r, sessionTimeMs };
+      });
+    } catch (_) {}
     
     const all = [...cached, ...parsedResults];
     const byPath = new Map(all.map(x => [x.filePath, x]));
