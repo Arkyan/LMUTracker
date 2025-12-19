@@ -351,23 +351,9 @@ function generateVehicleCardsPage(vehicleStatsByClass) {
 function generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStats) {
   const { fmtTime } = window.LMUUtils || {};
   const entries = Object.values(trackStats || {});
-
-  const bestOverall = entries.reduce((min, t) => (isFinite(t.bestLap) && t.bestLap > 0) ? Math.min(min, t.bestLap) : min, Infinity);
   const topSpeedOverall = entries.reduce((max, t) => (isFinite(t.topSpeed) && t.topSpeed > 0) ? Math.max(max, t.topSpeed) : max, 0);
   const sessionsOverall = entries.reduce((sum, t) => sum + (t.sessions || 0), 0);
   const lapsOverall = entries.reduce((sum, t) => sum + (t.totalLaps || 0), 0);
-
-  let weightedAvg = NaN;
-  if (lapsOverall > 0) {
-    const weightedSum = entries.reduce((sum, t) => {
-      const laps = t.totalLaps || 0;
-      return sum + (isFinite(t.avgLap) ? (t.avgLap * laps) : 0);
-    }, 0);
-    weightedAvg = weightedSum > 0 ? (weightedSum / lapsOverall) : NaN;
-  } else {
-    const avgs = entries.map(t => t.avgLap).filter(v => isFinite(v) && v > 0);
-    if (avgs.length > 0) weightedAvg = avgs.reduce((a,b)=>a+b,0) / avgs.length;
-  }
 
   const header = `
     <div class="vehicle-detail-header">
@@ -388,14 +374,6 @@ function generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStat
         <div class="vehicle-kpi">
           <div class="vehicle-kpi__label">Tours</div>
           <div class="vehicle-kpi__value">${lapsOverall}</div>
-        </div>
-        <div class="vehicle-kpi">
-          <div class="vehicle-kpi__label">Meilleur</div>
-          <div class="vehicle-kpi__value vehicle-kpi__value--ok">${(fmtTime && isFinite(bestOverall) && bestOverall !== Infinity) ? fmtTime(bestOverall) : '—'}</div>
-        </div>
-        <div class="vehicle-kpi">
-          <div class="vehicle-kpi__label">Moyenne</div>
-          <div class="vehicle-kpi__value">${(fmtTime && isFinite(weightedAvg)) ? fmtTime(weightedAvg) : '—'}</div>
         </div>
         <div class="vehicle-kpi">
           <div class="vehicle-kpi__label">V.Max</div>
