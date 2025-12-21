@@ -43,6 +43,20 @@ function calculateDriverStats(driverName, lastScannedFiles) {
   };
   
   if (!lastScannedFiles) return stats;
+
+  const driverNames = parseConfiguredDriverNames(driverName);
+  if (driverNames.length === 0) return stats;
+
+  const isRaceFromRR = (rr) => {
+    try {
+      if (!rr) return false;
+      return Object.entries(rr)
+        .filter(([k, v]) => v && typeof v === 'object' && ('Driver' in v))
+        .some(([k]) => String(k).toLowerCase().includes('race'));
+    } catch (_) {
+      return false;
+    }
+  };
   
   for (const file of lastScannedFiles) {
     if (file.error) continue;
@@ -50,23 +64,26 @@ function calculateDriverStats(driverName, lastScannedFiles) {
     const session = extractSession(file.parsed);
     if (!session) continue;
     
-    // Chercher le pilote dans cette session (nom exact ou dans l'équipe)
-    const driver = session.drivers.find(d => 
-      d.name === driverName || 
-      (d.allDrivers && d.allDrivers.includes(driverName))
-    );
+    // Chercher le pilote dans cette session (matching flexible + aliases)
+    const driver = session.drivers.find(d => {
+      const primary = normalizeName(d.name);
+      if (driverNames.includes(primary)) return true;
+      const aliases = (d.allDrivers || []).map(normalizeName);
+      return aliases.some(n => driverNames.includes(n));
+    });
     if (!driver) continue;
     
     stats.totalSessions++;
     
     // Détecter si c'est une course (présence de balise <Race> dans le XML)
     const rr = getRaceResultsRoot(file.parsed);
-    if (rr && rr.Race) {
+    const isRace = isRaceFromRR(rr);
+    if (isRace) {
       stats.totalRaces++;
     }
     
     // Calculer podiums et victoires par classe (uniquement pour les courses)
-    if (rr && rr.Race && isFinite(driver.classPosition) && driver.classPosition > 0) {
+    if (isRace && isFinite(driver.classPosition) && driver.classPosition > 0) {
       const carClass = driver.carClass || 'Unknown';
       
       // Initialiser la classe si nécessaire
@@ -135,6 +152,9 @@ function calculateTrackStats(driverName, lastScannedFiles) {
   const trackStats = {};
   
   if (!lastScannedFiles) return trackStats;
+
+  const driverNames = parseConfiguredDriverNames(driverName);
+  if (driverNames.length === 0) return trackStats;
   
   for (const file of lastScannedFiles) {
     if (file.error) continue;
@@ -150,10 +170,12 @@ function calculateTrackStats(driverName, lastScannedFiles) {
       if (!session) continue;
       
       // Chercher notre pilote dans cette session
-      const myDriver = session.drivers.find(d => 
-        d.name === driverName || 
-        (d.allDrivers && d.allDrivers.includes(driverName))
-      );
+      const myDriver = session.drivers.find(d => {
+        const primary = normalizeName(d.name);
+        if (driverNames.includes(primary)) return true;
+        const aliases = (d.allDrivers || []).map(normalizeName);
+        return aliases.some(n => driverNames.includes(n));
+      });
       
       if (!myDriver) continue;
       

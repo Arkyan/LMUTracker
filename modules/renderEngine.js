@@ -52,7 +52,7 @@ function generateSessionCard(file) {
     });
     
     if (playerDriver) {
-      const car = playerDriver.CarType || playerDriver.VehName || '';
+      const car = playerDriver.CarType || playerDriver.VehType || playerDriver.VehName || '';
       const carClass = playerDriver.CarClass || '';
       
       if (car) {

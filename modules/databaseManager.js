@@ -10,7 +10,79 @@
   const { app } = require('electron');
 
   let db = null;
-  const DB_VERSION = 1;
+  const DB_VERSION = 3;
+
+  function arrayify(val) {
+    if (val == null) return [];
+    return Array.isArray(val) ? val : [val];
+  }
+
+  function normalizeName(name) {
+    return String(name || '').toLowerCase().trim();
+  }
+
+  function getConfiguredDriverNames(configuredDriverName) {
+    if (!configuredDriverName) return [];
+    return String(configuredDriverName)
+      .split(',')
+      .map(normalizeName)
+      .filter(Boolean);
+  }
+
+  // Extraire les changements de pilotes depuis le Stream et les Swaps (similaire à xmlParser)
+  function extractDriverChanges(sessionData) {
+    const byVehicle = {}; // { [vehName]: Set(names) }
+    const ensure = (veh) => {
+      if (!veh) return null;
+      if (!byVehicle[veh]) byVehicle[veh] = new Set();
+      return byVehicle[veh];
+    };
+
+    try {
+      const stream = sessionData?.Stream;
+      const changes = arrayify(stream?.DriverChange);
+      for (const change of changes) {
+        const changeText = (change && typeof change === 'object') ? (change['#text'] || '') : change;
+        if (typeof changeText !== 'string') continue;
+        const slotMatch = changeText.match(/Slot=(\d+)/);
+        const vehicleMatch = changeText.match(/Vehicle="([^"]+)"/);
+        const oldMatch = changeText.match(/Old="([^"]+)"/);
+        const newMatch = changeText.match(/New="([^"]+)"/);
+        if (!slotMatch || !vehicleMatch || !oldMatch || !newMatch) continue;
+        const veh = vehicleMatch[1];
+        const set = ensure(veh);
+        if (!set) continue;
+        set.add(oldMatch[1]);
+        set.add(newMatch[1]);
+      }
+    } catch (_) {}
+
+    try {
+      const drivers = arrayify(sessionData?.Driver);
+      for (const driver of drivers) {
+        if (!driver || typeof driver !== 'object') continue;
+        const veh = driver.VehName;
+        if (!veh) continue;
+        const swaps = arrayify(driver.Swap);
+        if (!swaps.length) continue;
+        const set = ensure(veh);
+        if (!set) continue;
+        if (driver.Name) set.add(driver.Name);
+        for (const swap of swaps) {
+          const swapText = (swap && typeof swap === 'object') ? (swap['#text'] || '') : swap;
+          if (typeof swapText === 'string' && swapText.trim()) {
+            set.add(swapText);
+          }
+        }
+      }
+    } catch (_) {}
+
+    const out = {};
+    for (const [veh, set] of Object.entries(byVehicle)) {
+      out[veh] = Array.from(set);
+    }
+    return out;
+  }
 
   // Initialiser la base de données
   function initDatabase() {
@@ -25,6 +97,9 @@
       
       // Créer les tables si elles n'existent pas
       createTables();
+
+      // Migrer si nécessaire
+      migrateDatabase();
       
       console.log('[DB] Base de données initialisée avec succès');
       return { ok: true };
@@ -86,14 +161,17 @@
         name TEXT NOT NULL,
         is_player INTEGER DEFAULT 0,
         position INTEGER,
+        class_position INTEGER,
         finish_status TEXT,
         laps INTEGER,
         best_lap_time REAL,
         best_lap_num INTEGER,
         vehicle_name TEXT,
+        veh_name TEXT,
         vehicle_class TEXT,
         vehicle_number TEXT,
         team_name TEXT,
+        swaps_json TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
       
@@ -146,6 +224,38 @@
     }
   }
 
+  function migrateDatabase() {
+    if (!db) return;
+    try {
+      const versionRow = db.prepare('SELECT version FROM db_version LIMIT 1').get();
+      const current = versionRow && typeof versionRow.version === 'number' ? versionRow.version : 0;
+
+      // Toujours vérifier le schéma réel: il peut diverger de db_version (installations anciennes).
+      // Les ALTER TABLE sont idempotents via test PRAGMA.
+      const cols = db.prepare(`PRAGMA table_info(drivers)`).all().map(r => r.name);
+      const has = (c) => cols.includes(c);
+
+      if (!has('class_position')) db.exec('ALTER TABLE drivers ADD COLUMN class_position INTEGER');
+      if (!has('veh_name')) db.exec('ALTER TABLE drivers ADD COLUMN veh_name TEXT');
+      if (!has('swaps_json')) db.exec('ALTER TABLE drivers ADD COLUMN swaps_json TEXT');
+
+      // Mettre à jour la version
+      if (versionRow) {
+        db.prepare('UPDATE db_version SET version = ?').run(DB_VERSION);
+      } else {
+        db.prepare('INSERT INTO db_version (version) VALUES (?)').run(DB_VERSION);
+      }
+
+      if (current < DB_VERSION) {
+        console.log(`[DB] Migration appliquée: v${current} -> v${DB_VERSION}`);
+      } else {
+        console.log(`[DB] Schéma vérifié (db_version=v${current}, target=v${DB_VERSION})`);
+      }
+    } catch (error) {
+      console.error('[DB] Erreur de migration:', error);
+    }
+  }
+
   // Calculer un hash simple pour un fichier (basé sur chemin + taille + mtime)
   function calculateFileHash(filePath, stats) {
     const crypto = require('crypto');
@@ -188,7 +298,7 @@
       // Commencer une transaction
       const insertTransaction = db.transaction((filePath, fileHash, stats, raceResults) => {
         // Insérer ou mettre à jour les métadonnées du fichier
-        const fileInfo = db.prepare(`
+        db.prepare(`
           INSERT INTO file_metadata (
             file_path, file_hash, file_size, file_mtime, indexed_at,
             game_version, track_venue, track_course, track_event, track_length,
@@ -221,7 +331,12 @@
           raceResults.TimeString || null
         );
 
-        const fileId = fileInfo.lastInsertRowid;
+        // Toujours relire l'ID réel (UPSERT peut ne pas fournir lastInsertRowid fiable)
+        const fileRow = db.prepare('SELECT id FROM file_metadata WHERE file_path = ?').get(filePath);
+        const fileId = fileRow?.id;
+        if (!fileId) {
+          throw new Error('Impossible de récupérer file_id après UPSERT');
+        }
 
         // Supprimer les anciennes sessions pour ce fichier
         db.prepare('DELETE FROM sessions WHERE file_id = ?').run(fileId);
@@ -272,10 +387,11 @@
 
         const sessionId = sessionInfo.lastInsertRowid;
 
-        // Indexer les pilotes (seulement ceux configurés)
+        // Indexer les pilotes (ne garder que les entrées liées au pilote configuré, y compris swaps)
         if (sessionData.Driver) {
           const configuredDriver = getConfiguredDriverName();
-          indexDrivers(sessionId, sessionData.Driver, configuredDriver);
+          const driverChanges = extractDriverChanges(sessionData);
+          indexDrivers(sessionId, sessionData.Driver, configuredDriver, driverChanges);
         }
 
         // Stocker le Stream en JSON
@@ -293,56 +409,69 @@
   }
 
   // Indexer les pilotes d'une session
-  function indexDrivers(sessionId, driversData, configuredDriverName) {
+  function indexDrivers(sessionId, driversData, configuredDriverName, driverChangesByVehicle) {
     const drivers = Array.isArray(driversData) ? driversData : [driversData];
 
-    // Récupérer les noms de pilotes configurés
-    const normalizeName = (name) => (name || '').toLowerCase().trim();
-    const driverNames = configuredDriverName ? configuredDriverName.split(',').map(normalizeName).filter(Boolean) : [];
+    const driverNames = getConfiguredDriverNames(configuredDriverName);
+
+    const matchesConfigured = (driver) => {
+      if (!driverNames.length) return true; // Pas de pilote configuré: on conserve les laps (comportement historique)
+      try {
+        const vehName = driver?.VehName || '';
+        const fromStream = (driverChangesByVehicle && vehName && driverChangesByVehicle[vehName]) ? driverChangesByVehicle[vehName] : null;
+        const allNames = (fromStream && Array.isArray(fromStream) && fromStream.length)
+          ? fromStream
+          : [driver?.Name].filter(Boolean);
+        return allNames
+          .map(normalizeName)
+          .some(n => driverNames.includes(n));
+      } catch (_) {
+        return false;
+      }
+    };
 
     for (const driver of drivers) {
       if (!driver || typeof driver !== 'object') continue;
 
-      // Filtrer : ne garder que le pilote configuré ou ses alias
-      if (driverNames.length > 0) {
-        const driverName = normalizeName(driver.Name);
-        const isConfiguredDriver = driverNames.includes(driverName);
-        
-        // Vérifier aussi dans les alias si c'est un swap
-        const aliases = driver.allDrivers ? driver.allDrivers.map(normalizeName) : [];
-        const hasConfiguredAlias = aliases.some(alias => driverNames.includes(alias));
-        
-        if (!isConfiguredDriver && !hasConfiguredAlias) {
-          continue; // Ignorer ce pilote
-        }
-      }
-
       try {
         const driverInfo = db.prepare(`
           INSERT INTO drivers (
-            session_id, name, is_player, position, finish_status, laps,
-            best_lap_time, best_lap_num, vehicle_name, vehicle_class,
-            vehicle_number, team_name
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            session_id, name, is_player, position, class_position, finish_status, laps,
+            best_lap_time, best_lap_num, vehicle_name, veh_name, vehicle_class,
+            vehicle_number, team_name, swaps_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           sessionId,
           driver.Name || null,
           driver.isPlayer === 1 ? 1 : 0,
           driver.Position ? parseInt(driver.Position) : null,
+          driver.ClassPosition ? parseInt(driver.ClassPosition) : null,
           driver.FinishStatus || null,
           driver.Laps ? parseInt(driver.Laps) : null,
           driver.BestLapTime ? parseFloat(driver.BestLapTime) : null,
           driver.BestLapNum ? parseInt(driver.BestLapNum) : null,
           driver.VehType || driver.CarType || null,
+          driver.VehName || null,
           driver.CarClass || null,
           driver.CarNumber || null,
           driver.TeamName || null
+          , (() => {
+            try {
+              const swaps = arrayify(driver.Swap)
+                .map(s => (s && typeof s === 'object') ? (s['#text'] || '') : s)
+                .filter(s => typeof s === 'string' && s.trim())
+                .map(s => String(s));
+              return swaps.length ? JSON.stringify(swaps) : null;
+            } catch (_) {
+              return null;
+            }
+          })()
         );
 
         const driverId = driverInfo.lastInsertRowid;
 
-        // Indexer les tours
-        if (driver.Lap) {
+        // Indexer les tours uniquement pour le pilote configuré (et ses swaps)
+        if (driver.Lap && matchesConfigured(driver)) {
           indexLaps(driverId, driver.Lap);
         }
       } catch (error) {
