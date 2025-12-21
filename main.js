@@ -449,6 +449,40 @@ ipcMain.handle('parse-lmu-files', async (_event, filePaths) => {
     const cached = [];
     const toParse = [];
     
+    const isDbDataCompatible = (dbData) => {
+      try {
+        const sessions = Array.isArray(dbData?.sessions) ? dbData.sessions : [];
+
+        // Si la BDD ne contient aucun pilote, les stats/historique seront incomplets.
+        // Forcer alors un re-parse du XML (et donc une réindexation DB).
+        const totalDrivers = sessions.reduce((acc, s) => {
+          const drivers = Array.isArray(s?.drivers) ? s.drivers : [];
+          return acc + drivers.length;
+        }, 0);
+        if (totalDrivers <= 0) return false;
+
+        const hasRace = sessions.some(s => {
+          const name = String(s?.session_name || '').toLowerCase();
+          const type = String(s?.session_type || '').toLowerCase();
+          return type === 'race' || name.includes('race');
+        });
+        if (!hasRace) return true; // rien à valider côté podiums/victoires
+
+        for (const s of sessions) {
+          const name = String(s?.session_name || '').toLowerCase();
+          const type = String(s?.session_type || '').toLowerCase();
+          if (!(type === 'race' || name.includes('race'))) continue;
+          const drivers = Array.isArray(s?.drivers) ? s.drivers : [];
+          for (const d of drivers) {
+            if (d && d.class_position != null) return true;
+          }
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    };
+
     for (const fp of filePaths) {
       try {
         const st = await fs.stat(fp);
@@ -457,7 +491,7 @@ ipcMain.handle('parse-lmu-files', async (_event, filePaths) => {
         if (dbCheck.indexed) {
           // Récupérer depuis la BDD
           const dbData = dbManager.getFileData(fp);
-          if (dbData) {
+          if (dbData && isDbDataCompatible(dbData)) {
             // Convertir les données BDD au format attendu
             const parsed = convertDbDataToParsedFormat(dbData);
 
@@ -600,26 +634,37 @@ function convertDbDataToParsedFormat(dbData) {
             Name: driver.name,
             isPlayer: driver.is_player,
             Position: driver.position,
+            ClassPosition: driver.class_position,
             FinishStatus: driver.finish_status,
             Laps: driver.laps,
             BestLapTime: driver.best_lap_time,
             BestLapNum: driver.best_lap_num,
             VehType: driver.vehicle_name,
-            VehName: driver.vehicle_name,
+            VehName: driver.veh_name || null,
             CarClass: driver.vehicle_class,
             CarNumber: driver.vehicle_number,
             TeamName: driver.team_name
           };
+
+          // Ajouter les swaps (si disponibles)
+          try {
+            if (driver.swaps_json) {
+              const swaps = JSON.parse(driver.swaps_json);
+              if (Array.isArray(swaps) && swaps.length) {
+                driverData.Swap = swaps;
+              }
+            }
+          } catch (_) {}
           
           // Ajouter les tours
           if (driver.laps && Array.isArray(driver.laps)) {
             driverData.Lap = driver.laps.map(lap => ({
-              num: lap.lap_num,
-              et: lap.lap_time,
-              s1: lap.sector1,
-              s2: lap.sector2,
-              s3: lap.sector3,
-              fuel: lap.fuel_used
+              '@_num': lap.lap_num,
+              '#text': lap.lap_time,
+              '@_s1': lap.sector1,
+              '@_s2': lap.sector2,
+              '@_s3': lap.sector3,
+              '@_fuel': lap.fuel_used
             }));
           }
           
