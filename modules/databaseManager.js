@@ -258,9 +258,16 @@
 
   // Calculer un hash simple pour un fichier (basé sur chemin + taille + mtime)
   function calculateFileHash(filePath, stats) {
+    const size = stats && typeof stats.size === 'number' ? stats.size : 0;
+    const mtimeKey = stats && typeof stats.mtimeMs === 'number' ? Math.floor(stats.mtimeMs) : 0;
+    return calculateFileHashFromParts(filePath, size, mtimeKey);
+  }
+
+  function calculateFileHashFromParts(filePath, size, mtimeKey) {
     const crypto = require('crypto');
     const hash = crypto.createHash('md5');
-    hash.update(`${filePath}:${stats.size}:${stats.mtimeMs}`);
+    // Important: on utilise un mtime arrondi (comme stocké en DB) pour stabilité
+    hash.update(`${filePath}:${size}:${mtimeKey}`);
     return hash.digest('hex');
   }
 
@@ -269,14 +276,46 @@
     if (!db) return false;
 
     try {
-      const fileHash = calculateFileHash(filePath, stats);
-      const row = db.prepare(`
-        SELECT id, file_hash 
-        FROM file_metadata 
-        WHERE file_path = ? AND file_hash = ?
-      `).get(filePath, fileHash);
+      const size = stats && typeof stats.size === 'number' ? stats.size : null;
+      const mtimeKey = stats && typeof stats.mtimeMs === 'number' ? Math.floor(stats.mtimeMs) : null;
 
-      return row ? { indexed: true, fileId: row.id } : { indexed: false };
+      // Récupérer la ligne par chemin et comparer sur des champs stables.
+      const row = db.prepare(`
+        SELECT id, file_hash, file_size, file_mtime
+        FROM file_metadata
+        WHERE file_path = ?
+      `).get(filePath);
+
+      if (!row) return { indexed: false };
+
+      // Si on n'a pas de stats fiables, fallback sur l'ancien comportement hash.
+      if (size == null || mtimeKey == null) {
+        const legacyHash = (() => {
+          try {
+            const crypto = require('crypto');
+            const h = crypto.createHash('md5');
+            h.update(`${filePath}:${stats?.size}:${stats?.mtimeMs}`);
+            return h.digest('hex');
+          } catch {
+            return null;
+          }
+        })();
+        if (legacyHash && row.file_hash === legacyHash) return { indexed: true, fileId: row.id };
+        return { indexed: false };
+      }
+
+      const matchesStable = (Number(row.file_size) === Number(size)) && (Number(row.file_mtime) === Number(mtimeKey));
+      if (!matchesStable) return { indexed: false };
+
+      // Normaliser/mettre à jour le hash si besoin (évite faux négatifs futurs)
+      const expectedHash = calculateFileHashFromParts(filePath, size, mtimeKey);
+      if (row.file_hash !== expectedHash) {
+        try {
+          db.prepare('UPDATE file_metadata SET file_hash = ? WHERE id = ?').run(expectedHash, row.id);
+        } catch (_) {}
+      }
+
+      return { indexed: true, fileId: row.id };
     } catch (error) {
       console.error('[DB] Erreur lors de la vérification du fichier:', error);
       return { indexed: false };
@@ -359,15 +398,31 @@
 
   // Indexer les sessions d'un fichier
   function indexSessions(fileId, raceResults) {
-    const sessionKeys = [
-      'Practice1', 'Practice2', 'Practice3', 'Practice4',
-      'Qualifying1', 'Qualifying2', 'Qualifying3', 'Qualifying4',
-      'Warmup', 'Race1', 'Race2', 'Race'
-    ];
+    // Ne pas dépendre d'une liste fixe: LMU peut exposer des clés différentes (ex: Q1/P1, Qualifying, etc.)
+    const entries = Object.entries(raceResults || {}).filter(([k, v]) => {
+      if (!k) return false;
+      if (!v || typeof v !== 'object') return false;
+      const kk = String(k).toLowerCase();
 
-    for (const sessionKey of sessionKeys) {
-      const sessionData = raceResults[sessionKey];
-      if (!sessionData || typeof sessionData !== 'object') continue;
+      // Exclure explicitement les champs globaux connus de RaceResults
+      if (['stream', 'gameversion', 'trackvenue', 'trackcourse', 'trackevent', 'tracklength', 'datetime', 'timestring'].includes(kk)) {
+        return false;
+      }
+
+      // Clés "session-like" (classiques)
+      if (/(race|qual|practice|practise|warm)/i.test(k)) return true;
+
+      // Formats courts fréquents: Q1/Q2, P1/P2...
+      if (/^q\d+$/i.test(k)) return true;
+      if (/^p\d+$/i.test(k)) return true;
+
+      // Fallback: si l'objet contient des drivers, c'est une session
+      if ('Driver' in v) return true;
+
+      return false;
+    });
+
+    for (const [sessionKey, sessionData] of entries) {
 
       try {
         const sessionType = getSessionType(sessionKey);
@@ -550,7 +605,9 @@
     const key = sessionKey.toLowerCase();
     if (key.includes('race')) return 'race';
     if (key.includes('qual')) return 'qual';
-    if (key.includes('practice') || key.includes('practise')) return 'practice';
+    // Formats courts fréquents: Q1/Q2/P1/P2
+    if (/^q\d+$/.test(key)) return 'qual';
+    if (key.includes('practice') || key.includes('practise') || /^p\d+$/.test(key)) return 'practice';
     if (key.includes('warm')) return 'warmup';
     return 'unknown';
   }

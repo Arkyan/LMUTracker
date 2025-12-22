@@ -14,6 +14,9 @@
   let btnCleanupDb = null;
   let btnResetDb = null;
 
+  // Empêcher les doubles bindings si init() est rappelé
+  let listenersBound = false;
+
   // Initialiser le module
   function initDatabaseUI() {
     dbStatsFiles = document.getElementById('dbStatsFiles');
@@ -25,17 +28,31 @@
     btnCleanupDb = document.getElementById('btnCleanupDb');
     btnResetDb = document.getElementById('btnResetDb');
 
+    // Si la vue settings n'est pas encore présente, on attend un init() ultérieur
+    const hasStatsUi = !!(dbStatsFiles || dbStatsSessions || dbStatsDrivers || dbStatsLaps || dbStatsSize);
+    const hasButtons = !!(btnRefreshDbStats || btnCleanupDb || btnResetDb);
+    if (!hasStatsUi && !hasButtons) {
+      return;
+    }
+
     // Ajouter les événements
-    if (btnRefreshDbStats) {
-      btnRefreshDbStats.addEventListener('click', refreshDatabaseStats);
-    }
+    if (!listenersBound) {
+      if (btnRefreshDbStats && btnRefreshDbStats.dataset.lmuBound !== '1') {
+        btnRefreshDbStats.addEventListener('click', refreshDatabaseStats);
+        btnRefreshDbStats.dataset.lmuBound = '1';
+      }
 
-    if (btnCleanupDb) {
-      btnCleanupDb.addEventListener('click', cleanupDatabase);
-    }
+      if (btnCleanupDb && btnCleanupDb.dataset.lmuBound !== '1') {
+        btnCleanupDb.addEventListener('click', cleanupDatabase);
+        btnCleanupDb.dataset.lmuBound = '1';
+      }
 
-    if (btnResetDb) {
-      btnResetDb.addEventListener('click', resetDatabase);
+      if (btnResetDb && btnResetDb.dataset.lmuBound !== '1') {
+        btnResetDb.addEventListener('click', resetDatabase);
+        btnResetDb.dataset.lmuBound = '1';
+      }
+
+      listenersBound = true;
     }
 
     // Charger les statistiques au démarrage

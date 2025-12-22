@@ -64,6 +64,48 @@ async function initializeApp() {
   console.log('- LMUProfileManager:', !!window.LMUProfileManager);
   
   try {
+    // Charger le HTML des vues (profil / historique / voitures / settings) depuis des fichiers séparés.
+    // Important: doit être fait avant initNavigation/initFileManager car ces modules cherchent des IDs.
+    try {
+      if (window.lmuAPI && typeof window.lmuAPI.readView === 'function') {
+        const viewTargets = [
+          { viewName: 'profile', elementId: 'view-profile' },
+          { viewName: 'history', elementId: 'view-history' },
+          { viewName: 'vehicles', elementId: 'view-vehicles' },
+          { viewName: 'vehicle-detail', elementId: 'view-vehicle-detail' },
+          { viewName: 'settings', elementId: 'view-settings' }
+        ];
+
+        for (const t of viewTargets) {
+          const el = document.getElementById(t.elementId);
+          if (!el) continue;
+          if (el.dataset && el.dataset.lmuViewLoaded === '1') continue;
+          const res = await window.lmuAPI.readView(t.viewName);
+          if (res && res.ok && typeof res.content === 'string') {
+            el.innerHTML = res.content;
+            if (el.dataset) el.dataset.lmuViewLoaded = '1';
+          } else {
+            console.warn(`Impossible de charger la vue ${t.viewName}:`, res?.error || res);
+          }
+        }
+
+        // Les vues étant injectées après DOMContentLoaded, certains modules UI (Settings)
+        // ont pu s'initialiser trop tôt. On relance leurs init maintenant.
+        try {
+          if (window.LMUDatabaseUI && typeof window.LMUDatabaseUI.init === 'function') {
+            window.LMUDatabaseUI.init();
+          }
+        } catch (_) {}
+        try {
+          if (window.LMUUpdateManager && typeof window.LMUUpdateManager.init === 'function') {
+            await window.LMUUpdateManager.init();
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      console.warn('Chargement des vues séparées a échoué:', e);
+    }
+
     // Initialiser les modules dans l'ordre de dépendance
     if (window.LMUStorage) {
       console.log('Initialisation du module Storage...');

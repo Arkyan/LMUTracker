@@ -77,6 +77,65 @@ async function checkForUpdates() {
   }
 }
 
+// Initialiser les éléments UI présents dans la vue Settings (idempotent)
+async function initUpdateSettingsUI() {
+  // Afficher la version de l'app dans les paramètres
+  const versionElement = document.getElementById('appVersion');
+  if (versionElement && versionElement.dataset.lmuInit !== '1') {
+    versionElement.dataset.lmuInit = '1';
+    try {
+      const version = await window.lmuAPI.getAppVersion();
+      versionElement.textContent = `v${version}`;
+    } catch (error) {
+      console.error('Erreur lors de la récupération de la version:', error);
+      versionElement.textContent = 'Inconnue';
+    }
+  }
+
+  // Gérer le bouton de vérification des mises à jour
+  const btnCheckUpdates = document.getElementById('btnCheckUpdates');
+  if (btnCheckUpdates && btnCheckUpdates.dataset.lmuBound !== '1') {
+    btnCheckUpdates.dataset.lmuBound = '1';
+    btnCheckUpdates.addEventListener('click', async () => {
+      const originalHTML = btnCheckUpdates.innerHTML;
+      btnCheckUpdates.disabled = true;
+      btnCheckUpdates.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Vérification...';
+      try {
+        await checkForUpdates();
+        // Attendre 2 secondes pour laisser le temps à la notification d'apparaître si disponible
+        setTimeout(() => {
+          if (!document.getElementById('update-notification')) {
+            // Pas de mise à jour disponible
+            btnCheckUpdates.innerHTML = '<i class="fas fa-check"></i> Application à jour';
+            btnCheckUpdates.style.background = 'rgba(34,197,94,0.1)';
+            btnCheckUpdates.style.borderColor = 'rgba(34,197,94,0.3)';
+            btnCheckUpdates.style.color = '#22c55e';
+            setTimeout(() => {
+              btnCheckUpdates.innerHTML = originalHTML;
+              btnCheckUpdates.disabled = false;
+              btnCheckUpdates.style = '';
+            }, 3000);
+          } else {
+            btnCheckUpdates.innerHTML = originalHTML;
+            btnCheckUpdates.disabled = false;
+          }
+        }, 2000);
+      } catch (error) {
+        console.error('Erreur lors de la vérification:', error);
+        btnCheckUpdates.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Erreur';
+        btnCheckUpdates.style.background = 'rgba(239,68,68,0.1)';
+        btnCheckUpdates.style.borderColor = 'rgba(239,68,68,0.3)';
+        btnCheckUpdates.style.color = '#ef4444';
+        setTimeout(() => {
+          btnCheckUpdates.innerHTML = originalHTML;
+          btnCheckUpdates.disabled = false;
+          btnCheckUpdates.style = '';
+        }, 3000);
+      }
+    });
+  }
+}
+
 async function downloadUpdate() {
   try {
     console.log('Début du téléchargement de la mise à jour...');
@@ -179,66 +238,13 @@ function closeUpdateNotification() {
 
 // Initialisation au chargement de la page
 document.addEventListener('DOMContentLoaded', async () => {
-  // Afficher la version de l'app dans les paramètres
-  const versionElement = document.getElementById('appVersion');
-  if (versionElement) {
-    try {
-      const version = await window.lmuAPI.getAppVersion();
-      versionElement.textContent = `v${version}`;
-    } catch (error) {
-      console.error('Erreur lors de la récupération de la version:', error);
-      versionElement.textContent = 'Inconnue';
-    }
-  }
-
-  // Gérer le bouton de vérification des mises à jour
-  const btnCheckUpdates = document.getElementById('btnCheckUpdates');
-  if (btnCheckUpdates) {
-    btnCheckUpdates.addEventListener('click', async () => {
-      const icon = btnCheckUpdates.querySelector('i');
-      const originalHTML = btnCheckUpdates.innerHTML;
-      
-      btnCheckUpdates.disabled = true;
-      btnCheckUpdates.innerHTML = '<i class=\"fas fa-spinner fa-spin\"></i> Vérification...';
-      
-      try {
-        await checkForUpdates();
-        
-        // Attendre 2 secondes pour laisser le temps à la notification d'apparaître si disponible
-        setTimeout(() => {
-          if (!document.getElementById('update-notification')) {
-            // Pas de mise à jour disponible
-            btnCheckUpdates.innerHTML = '<i class=\"fas fa-check\"></i> Application à jour';
-            btnCheckUpdates.style.background = 'rgba(34,197,94,0.1)';
-            btnCheckUpdates.style.borderColor = 'rgba(34,197,94,0.3)';
-            btnCheckUpdates.style.color = '#22c55e';
-            
-            setTimeout(() => {
-              btnCheckUpdates.innerHTML = originalHTML;
-              btnCheckUpdates.disabled = false;
-              btnCheckUpdates.style = '';
-            }, 3000);
-          } else {
-            btnCheckUpdates.innerHTML = originalHTML;
-            btnCheckUpdates.disabled = false;
-          }
-        }, 2000);
-      } catch (error) {
-        console.error('Erreur lors de la vérification:', error);
-        btnCheckUpdates.innerHTML = '<i class=\"fas fa-exclamation-triangle\"></i> Erreur';
-        btnCheckUpdates.style.background = 'rgba(239,68,68,0.1)';
-        btnCheckUpdates.style.borderColor = 'rgba(239,68,68,0.3)';
-        btnCheckUpdates.style.color = '#ef4444';
-        
-        setTimeout(() => {
-          btnCheckUpdates.innerHTML = originalHTML;
-          btnCheckUpdates.disabled = false;
-          btnCheckUpdates.style = '';
-        }, 3000);
-      }
-    });
-  }
+  await initUpdateSettingsUI();
 });
+
+// Exposer un init manuel (utile si la vue settings est injectée après DOMContentLoaded)
+window.LMUUpdateManager = {
+  init: initUpdateSettingsUI
+};
 
 // CSS à ajouter à votre styles.css
 const updateStyles = `

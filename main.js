@@ -810,6 +810,28 @@ ipcMain.handle('open-lmu-file-by-path', async (_event, filePath) => {
   }
 });
 
+// IPC: lire un fragment de vue HTML (pour séparer les vues sans multiplier les fenêtres/pages)
+ipcMain.handle('read-view', async (_event, viewName) => {
+  try {
+    const viewMap = {
+      profile: 'profile.html',
+      history: 'history.html',
+      vehicles: 'vehicles.html',
+      'vehicle-detail': 'vehicle-detail.html',
+      settings: 'settings.html'
+    };
+    const fileName = viewMap[String(viewName || '')];
+    if (!fileName) {
+      return { ok: false, error: 'Vue inconnue' };
+    }
+    const viewPath = path.join(__dirname, 'views', fileName);
+    const content = await fs.readFile(viewPath, 'utf-8');
+    return { ok: true, viewName: String(viewName), content };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+});
+
   // ===========================
   // Paramètres (persistance JSON)
   // ===========================

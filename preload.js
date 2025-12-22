@@ -22,7 +22,9 @@ contextBridge.exposeInMainWorld('lmuAPI', {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
-  installUpdate: () => ipcRenderer.invoke('install-update')
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  // Lecture de fragments HTML (vues)
+  readView: (viewName) => ipcRenderer.invoke('read-view', viewName)
 });
 
 // Exposer l'API electron pour les événements de mise à jour
