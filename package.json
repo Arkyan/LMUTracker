@@ -58,8 +58,8 @@
     }
   },
   "dependencies": {
+    "electron-updater": "^6.7.3",
     "better-sqlite3": "^12.6.2",
-    "electron-updater": "^6.6.2",
     "fast-xml-parser": "^5.3.4"
   },
   "devDependencies": {
