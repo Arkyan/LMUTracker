@@ -88,7 +88,7 @@ function generateSessionCard(file) {
       </div>
       ${file.error ? `<div style="color:var(--err);font-size:12px;margin-top:8px;"><i class="fas fa-times-circle"></i> ${file.error}</div>` : ''}
     </div>
-    ${disabled ? '<span class="chip" style="background:var(--err);color:#000;">Erreur</span>' : '<span class="chip" style="background:var(--brand);color:#fff;">Voir les stats →</span>'}
+    ${disabled ? '<span class="chip" style="background:var(--err);color:#000;">Erreur</span>' : '<span class="chip" style="background:var(--accent);color:#fff;">Voir les stats →</span>'}
   </div>`;
 }
 
@@ -244,7 +244,7 @@ function renderSessionInto(container, fileLabel, session) {
       `<div class="badge" style="background:${d.classPosition === 1 ? 'linear-gradient(135deg,#fbbf24,#f59e0b)' : 
       d.classPosition === 2 ? 'linear-gradient(135deg,#94a3b8,#64748b)' : 
       d.classPosition === 3 ? 'linear-gradient(135deg,#fb923c,#ea580c)' : 
-      'linear-gradient(135deg,var(--accent),var(--brand))'}">${d.classPosition}</div>` : '';
+      'linear-gradient(135deg,var(--accent),var(--purple))'}">${d.classPosition}</div>` : '';
     
     const classPositionDisplay = isFinite(d.classPosition) && d.classPosition > 0 ? `P${d.classPosition}` : '';
     const overallDisplay = isFinite(d.position) && d.position > 0 ? `(${d.position}e Overall)` : '';

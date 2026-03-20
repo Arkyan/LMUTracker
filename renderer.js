@@ -3,69 +3,18 @@
  * Coordonne les différents modules de l'application
  */
 
-// Note: les états applicatifs (sessions, sélection de classe, etc.) sont gérés
-// par les modules (FileManager/Navigation/Storage/StatsCalculator). Garder
-// renderer.js comme orchestrateur, sans variables globales dupliquées.
-
-// Initialisation de l'application
+// Tous les modules <script> sont synchrones et chargés avant renderer.js.
+// DOMContentLoaded garantit que window.LMU* sont disponibles dès ici.
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('DOM chargé, attente du chargement des modules...');
-  // Flag global pour éviter de régénérer le profil plusieurs fois automatiquement
-  if (typeof window !== 'undefined' && window.__lmuProfileAutoloadDone === undefined) {
-    window.__lmuProfileAutoloadDone = false;
-  }
-  
-  // Attendre que tous les modules soient chargés
-  const checkModulesLoaded = () => {
-    const requiredModules = [
-      'LMUUtils',
-      'LMUXMLParser', 
-      'LMUStatsCalculator',
-      'LMURenderEngine',
-      'LMUCacheManager',
-      'LMUStorage',
-      'LMUNavigation',
-      'LMUFileManager',
-      'LMUProfileManager'
-    ];
-    
-    const loadedModules = requiredModules.filter(module => window[module]);
-    console.log(`Modules chargés: ${loadedModules.length}/${requiredModules.length}`);
-    console.log('Chargés:', loadedModules);
-    console.log('Manquants:', requiredModules.filter(module => !window[module]));
-    
-    if (loadedModules.length === requiredModules.length) {
-      console.log('Tous les modules sont chargés, initialisation...');
-      initializeApp();
-    } else {
-      console.log('Attente des modules manquants...');
-      setTimeout(checkModulesLoaded, 100);
-    }
-  };
-  
-  // Commencer la vérification après un court délai pour laisser les scripts se charger
-  setTimeout(checkModulesLoaded, 50);
+  window.__lmuProfileAutoloadDone = false;
+  initializeApp();
 });
 
 // Initialiser tous les modules
 async function initializeApp() {
-  console.log('Initialisation de LMU Tracker...');
-  
-  // Vérifier que tous les modules sont chargés
-  console.log('Modules disponibles:');
-  console.log('- LMUUtils:', !!window.LMUUtils);
-  console.log('- LMUXMLParser:', !!window.LMUXMLParser);
-  console.log('- LMUStatsCalculator:', !!window.LMUStatsCalculator);
-  console.log('- LMURenderEngine:', !!window.LMURenderEngine);
-  console.log('- LMUCacheManager:', !!window.LMUCacheManager);
-  console.log('- LMUStorage:', !!window.LMUStorage);
-  console.log('- LMUNavigation:', !!window.LMUNavigation);
-  console.log('- LMUFileManager:', !!window.LMUFileManager);
-  console.log('- LMUProfileManager:', !!window.LMUProfileManager);
-  
   try {
-    // Charger le HTML des vues (profil / historique / voitures / settings) depuis des fichiers séparés.
-    // Important: doit être fait avant initNavigation/initFileManager car ces modules cherchent des IDs.
+    // Charger le HTML des vues depuis des fichiers séparés.
+    // Doit être fait avant initNavigation/initFileManager car ces modules cherchent des IDs.
     try {
       if (window.lmuAPI && typeof window.lmuAPI.readView === 'function') {
         const viewTargets = [
@@ -84,13 +33,10 @@ async function initializeApp() {
           if (res && res.ok && typeof res.content === 'string') {
             el.innerHTML = res.content;
             if (el.dataset) el.dataset.lmuViewLoaded = '1';
-          } else {
-            console.warn(`Impossible de charger la vue ${t.viewName}:`, res?.error || res);
           }
         }
 
-        // Les vues étant injectées après DOMContentLoaded, certains modules UI (Settings)
-        // ont pu s'initialiser trop tôt. On relance leurs init maintenant.
+        // Les vues sont injectées après DOMContentLoaded; relancer les init UI.
         try {
           if (window.LMUDatabaseUI && typeof window.LMUDatabaseUI.init === 'function') {
             window.LMUDatabaseUI.init();
@@ -102,38 +48,24 @@ async function initializeApp() {
           }
         } catch (_) {}
       }
-    } catch (e) {
-      console.warn('Chargement des vues séparées a échoué:', e);
-    }
+    } catch (_) {}
 
     // Initialiser les modules dans l'ordre de dépendance
     if (window.LMUStorage) {
-      console.log('Initialisation du module Storage...');
       try {
         await window.LMUStorage.initStorage();
-      } catch (e) {
-        console.warn('Init Storage async a échoué ou a été interrompu:', e);
-      }
-    } else {
-      console.error('Module LMUStorage non disponible');
+      } catch (_) {}
     }
-    
+
     if (window.LMUNavigation) {
-      console.log('Initialisation du module Navigation...');
       window.LMUNavigation.initNavigation();
-    } else {
-      console.error('Module LMUNavigation non disponible');
     }
-    
+
     if (window.LMUFileManager) {
-      console.log('Initialisation du module FileManager...');
       window.LMUFileManager.initFileManager();
-    } else {
-      console.error('Module LMUFileManager non disponible');
     }
-    
-    // Mode préchargement: si on veut tout charger avant d'afficher, on montrera un overlay
-    // On garde le cache d'historique comme fallback si overlay n'est pas utilisé
+
+    // Restaurer le cache d'historique si disponible
     try {
       const cached = localStorage.getItem('lmu.cachedHistoryHTML');
       if (cached) {
@@ -147,73 +79,50 @@ async function initializeApp() {
       }
     } catch (_) {}
 
-    // Gérer la navigation basée sur le hash de l'URL
     handleUrlHash();
-    
-    // Effectuer le scan initial si un dossier est configuré
     performInitialScan();
 
-    // Quand l'historique rend un lot, (re)générer le profil si on est sur profil
-    try {
-      window.addEventListener('lmu:history-updated', () => {
-        const onProfileView = window.LMUNavigation && typeof window.LMUNavigation.getCurrentView === 'function'
-          ? window.LMUNavigation.getCurrentView() === 'profile' : false;
-        const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
-        const isAutoLoading = !!window.__lmu_autoLoading;
-        if (onProfileView && driverName && window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
-          // Evite de spammer: petite temporisation debounce
-          clearTimeout(window.__lmu_profileRegenerateTimer);
-          window.__lmu_profileRegenerateTimer = setTimeout(() => {
-            window.LMUProfileManager.generateProfileContent();
-          }, isAutoLoading ? 500 : 150);
-        }
-        // Rafraîchir aussi les vues Voitures / Détail véhicule si elles sont affichées
-        const current = window.LMUNavigation && typeof window.LMUNavigation.getCurrentView === 'function'
-          ? window.LMUNavigation.getCurrentView() : '';
-        clearTimeout(window.__lmu_reRenderViewTimer);
-        window.__lmu_reRenderViewTimer = setTimeout(() => {
-          if (current === 'vehicles' || current === 'vehicleDetail') {
-            if (window.LMUNavigation && typeof window.LMUNavigation.switchView === 'function') {
-              window.LMUNavigation.switchView(current);
-            }
-          }
-        }, isAutoLoading ? 500 : 150);
-      });
-    } catch (_) {}
+    // Régénérer le profil / les vues Voitures quand l'historique est mis à jour
+    window.addEventListener('lmu:history-updated', () => {
+      const nav = window.LMUNavigation;
+      const current = nav && typeof nav.getCurrentView === 'function' ? nav.getCurrentView() : '';
+      const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
+      const isAutoLoading = !!window.__lmu_autoLoading;
+      const delay = isAutoLoading ? 500 : 150;
 
-    // Ecouter les retours/avancées navigateur pour SPA
+      if (current === 'profile' && driverName && window.LMUProfileManager) {
+        clearTimeout(window.__lmu_profileRegenerateTimer);
+        window.__lmu_profileRegenerateTimer = setTimeout(() => {
+          window.LMUProfileManager.generateProfileContent();
+        }, delay);
+      }
+
+      clearTimeout(window.__lmu_reRenderViewTimer);
+      window.__lmu_reRenderViewTimer = setTimeout(() => {
+        if ((current === 'vehicles' || current === 'vehicleDetail') && nav) {
+          nav.switchView(current);
+        }
+      }, delay);
+    });
+
+    // Navigation SPA via bouton retour/avancer
     window.addEventListener('popstate', (ev) => {
       const state = ev.state;
-      if (!state) {
-        // Si pas d'état, tenter restauration de l'historique
-        if (window.LMUFileManager && window.LMUFileManager.restoreHistoryFromCache) {
-          window.LMUFileManager.restoreHistoryFromCache();
-        }
-        return;
-      }
-      if (state.type === 'history') {
-        if (window.LMUFileManager && window.LMUFileManager.restoreHistoryFromCache) {
-          window.LMUFileManager.restoreHistoryFromCache();
-        }
+      if (!state || state.type === 'history') {
+        window.LMUFileManager?.restoreHistoryFromCache?.();
       } else if (state.type === 'session' && state.filePath) {
-        if (window.LMUFileManager && window.LMUFileManager.renderSessionInPlace) {
-          window.LMUFileManager.renderSessionInPlace(state.filePath);
-        }
+        window.LMUFileManager?.renderSessionInPlace?.(state.filePath);
       }
     });
-    
-    console.log('LMU Tracker initialisé avec succès !');
   } catch (error) {
-    console.error('Erreur lors de l\'initialisation:', error);
-    console.error('Stack trace:', error.stack);
+    console.error('[LMUTracker] Erreur initialisation:', error);
   }
 }
 
 // Afficher/cacher l'overlay de démarrage
 function setStartupOverlay(visible) {
   const overlay = document.getElementById('startupOverlay');
-  if (!overlay) return;
-  overlay.style.display = visible ? 'block' : 'none';
+  if (overlay) overlay.style.display = visible ? 'block' : 'none';
 }
 
 function updateStartupProgress(current, total, text) {
@@ -229,86 +138,55 @@ function updateStartupProgress(current, total, text) {
 
 // Gérer la navigation basée sur le hash de l'URL
 function handleUrlHash() {
-  const hash = window.location.hash.slice(1); // Enlever le #
-  
+  const hash = window.location.hash.slice(1);
   if (hash && ['profile', 'history', 'vehicles', 'vehicle', 'settings'].includes(hash)) {
-    console.log(`Navigation vers la vue "${hash}" basée sur l'URL`);
-    if (window.LMUNavigation && window.LMUNavigation.switchView) {
-      window.LMUNavigation.switchView(hash);
-    }
+    window.LMUNavigation?.switchView?.(hash);
   }
 }
 
 // Effectuer le scan initial au lancement
 function performInitialScan() {
-  // Attendre un peu que tous les modules soient complètement initialisés
   setTimeout(() => {
     try {
       const folderPath = window.LMUStorage ? window.LMUStorage.getConfiguredResultsFolder() : '';
-      const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
-      const loadAll = window.LMUStorage && window.LMUStorage.loadLoadAllSessionsDirectly && window.LMUStorage.loadLoadAllSessionsDirectly();
-      
-      console.log('Scan initial - Dossier configuré:', folderPath);
-      console.log('Scan initial - Pilote configuré:', driverName);
-      
-      if (folderPath && folderPath.trim() !== '') {
-        console.log('Lancement du scan initial...');
-        // Si l’option tout charger est activée, proposer un préchargement bloquant UI
-        if (loadAll) {
-          // Brancher sur les évènements d'avancement de l'historique
-          let lastDetail = { rendered: 0, totalMeta: 0 };
-          let overlayShown = false;
-          const onUpdate = (ev) => {
-            lastDetail = ev?.detail || lastDetail;
-            // N'afficher l'overlay que s'il y a effectivement des fichiers à charger
-            if (lastDetail.totalMeta > 0 && !overlayShown) {
-              setStartupOverlay(true);
-              overlayShown = true;
-            }
-            updateStartupProgress(lastDetail.rendered || 0, lastDetail.totalMeta || 0, 'Chargement des sessions…');
-          };
-          try { window.addEventListener('lmu:history-updated', onUpdate); } catch(_) {}
-          // Démarrer le scan (il lancera l’auto-chargement qui émet l’événement)
-          if (window.LMUFileManager && window.LMUFileManager.scanConfiguredFolder) {
-            window.LMUFileManager.scanConfiguredFolder();
+      if (!folderPath || !folderPath.trim()) return;
+
+      const loadAll = window.LMUStorage?.loadLoadAllSessionsDirectly?.();
+      if (loadAll) {
+        let lastDetail = { rendered: 0, totalMeta: 0 };
+        let overlayShown = false;
+        const onUpdate = (ev) => {
+          lastDetail = ev?.detail || lastDetail;
+          if (lastDetail.totalMeta > 0 && !overlayShown) {
+            setStartupOverlay(true);
+            overlayShown = true;
           }
-          // Observer la fin: quand rendered == totalMeta (et > 0), on ferme l’overlay
-          const checkDone = () => {
-            const done = (lastDetail.totalMeta > 0) && (lastDetail.rendered >= lastDetail.totalMeta);
-            // Ou si totalMeta est 0 (aucun fichier), ne rien afficher et arrêter
-            const noFiles = lastDetail.totalMeta === 0;
-            if (done || noFiles) {
-              setStartupOverlay(false);
-              try { window.removeEventListener('lmu:history-updated', onUpdate); } catch(_) {}
-            } else {
-              setTimeout(checkDone, 200);
-            }
-          };
-          setTimeout(checkDone, 300);
-        } else {
-          if (window.LMUFileManager && window.LMUFileManager.scanConfiguredFolder) {
-            window.LMUFileManager.scanConfiguredFolder();
+          updateStartupProgress(lastDetail.rendered || 0, lastDetail.totalMeta || 0, 'Chargement des sessions…');
+        };
+        window.addEventListener('lmu:history-updated', onUpdate);
+        window.LMUFileManager?.scanConfiguredFolder?.();
+        const checkDone = () => {
+          const done = lastDetail.totalMeta > 0 && lastDetail.rendered >= lastDetail.totalMeta;
+          if (done || lastDetail.totalMeta === 0) {
+            setStartupOverlay(false);
+            window.removeEventListener('lmu:history-updated', onUpdate);
+          } else {
+            setTimeout(checkDone, 200);
           }
-        }
+        };
+        setTimeout(checkDone, 300);
       } else {
-        console.log('Aucun dossier configuré, pas de scan initial');
+        window.LMUFileManager?.scanConfiguredFolder?.();
       }
-    } catch (error) {
-      console.warn('Erreur lors du scan initial:', error);
-    }
-  }, 500); // Délai pour s'assurer que tous les modules sont prêts
+    } catch (_) {}
+  }, 500);
 }
 
-// Fonctions de compatibilité pour l'ancien code
+// Fonctions de compatibilité
 function generateProfileContent() {
-  if (window.LMUProfileManager && window.LMUProfileManager.generateProfileContent) {
-    window.LMUProfileManager.generateProfileContent();
-  }
+  window.LMUProfileManager?.generateProfileContent?.();
 }
 
 function scanConfiguredFolder() {
-  if (window.LMUFileManager && window.LMUFileManager.scanConfiguredFolder) {
-    window.LMUFileManager.scanConfiguredFolder();
-  }
+  window.LMUFileManager?.scanConfiguredFolder?.();
 }
-

@@ -99,7 +99,7 @@ function generateWelcomeSection(driverName, stats) {
       <!-- Carte de bienvenue -->
       <div class="card" style="background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(167,139,250,0.1));border:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
-          <div style="width:64px;height:64px;background:linear-gradient(135deg,var(--brand),var(--accent));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;"><i class="fas fa-flag-checkered"></i></div>
+          <div style="width:64px;height:64px;background:linear-gradient(135deg,var(--accent),var(--purple));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;"><i class="fas fa-flag-checkered"></i></div>
           <div>
             <h2 style="margin:0;font-size:24px;color:var(--text);">Bonjour, ${driverName} !</h2>
             <p style="margin:4px 0 0 0;color:var(--muted);">Bienvenue dans votre tableau de bord Le Mans Ultimate</p>

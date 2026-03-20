@@ -303,7 +303,7 @@ function renderHistorySkeleton(container, title) {
     <div id="historyProgressWrap" style="display:none;margin-bottom:12px;">
       <div class="muted" id="historyProgressText" style="font-size:12px;margin-bottom:6px;">Chargement…</div>
       <div style="height:8px;background:var(--panel);border-radius:6px;overflow:hidden;">
-        <div id="historyProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--brand),var(--accent));transition:width .2s ease;"></div>
+        <div id="historyProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--purple));transition:width .2s ease;"></div>
       </div>
     </div>
     <div id="historyGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>

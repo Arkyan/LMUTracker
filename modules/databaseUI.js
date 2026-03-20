@@ -61,22 +61,16 @@
 
   // Rafraîchir les statistiques de la BDD
   async function refreshDatabaseStats() {
-    if (!window.lmuAPI || !window.lmuAPI.dbGetStats) {
-      console.warn('[DB UI] API de base de données non disponible');
-      return;
-    }
+    if (!window.lmuAPI || !window.lmuAPI.dbGetStats) return;
 
     try {
       const result = await window.lmuAPI.dbGetStats();
-      
       if (result.ok && result.stats) {
         updateStatsDisplay(result.stats);
       } else {
-        console.error('[DB UI] Erreur lors de la récupération des stats:', result.error);
         displayStatsError();
       }
-    } catch (error) {
-      console.error('[DB UI] Erreur:', error);
+    } catch (_) {
       displayStatsError();
     }
   }
@@ -118,7 +112,6 @@
   // Nettoyer la base de données (supprimer les entrées de fichiers inexistants)
   async function cleanupDatabase() {
     if (!window.lmuAPI || !window.lmuAPI.dbCleanup) {
-      console.warn('[DB UI] API de nettoyage non disponible');
       return;
     }
 
@@ -127,13 +120,10 @@
     }
 
     try {
-      const btnText = btnCleanupDb.innerHTML;
-      btnCleanupDb.innerHTML = '<i class=\"fas fa-sync-alt\"></i> Nettoyage...';
+      btnCleanupDb.innerHTML = '<i class="fas fa-sync-alt"></i> Nettoyage...';
       btnCleanupDb.disabled = true;
 
-      console.log('[DB UI] Lancement du nettoyage...');
       const result = await window.lmuAPI.dbCleanup();
-      console.log('[DB UI] Résultat du nettoyage:', result);
       
       if (result.ok) {
         const message = result.deleted > 0 
@@ -153,7 +143,6 @@
         alert(`Erreur lors du nettoyage :\n\n${result.error}`);
       }
     } catch (error) {
-      console.error('[DB UI] Erreur lors du nettoyage:', error);
       alert(`Erreur lors du nettoyage :\n\n${error.message}`);
     } finally {
       btnCleanupDb.innerHTML = '<i class="fas fa-broom"></i> Nettoyer';
@@ -164,7 +153,6 @@
   // Réinitialiser complètement la base de données
   async function resetDatabase() {
     if (!window.lmuAPI || !window.lmuAPI.dbReset) {
-      console.warn('[DB UI] API de réinitialisation non disponible');
       return;
     }
 
@@ -173,13 +161,10 @@
     }
 
     try {
-      const btnText = btnResetDb.innerHTML;
       btnResetDb.innerHTML = '<i class="fas fa-sync-alt"></i> Réinitialisation...';
       btnResetDb.disabled = true;
 
-      console.log('[DB UI] Lancement de la réinitialisation...');
       const result = await window.lmuAPI.dbReset();
-      console.log('[DB UI] Résultat de la réinitialisation:', result);
       
       if (result.ok) {
         alert('Base de données réinitialisée avec succès !\n\nToutes les données ont été supprimées. Les fichiers seront réindexés au prochain scan.');
@@ -195,7 +180,6 @@
         alert(`Erreur lors de la réinitialisation :\n\n${result.error}`);
       }
     } catch (error) {
-      console.error('[DB UI] Erreur lors de la réinitialisation:', error);
       alert(`Erreur lors de la réinitialisation :\n\n${error.message}`);
     } finally {
       btnResetDb.innerHTML = '<i class="fas fa-trash-alt"></i> Réinitialiser';
@@ -227,12 +211,5 @@
     cleanup: cleanupDatabase,
     reset: resetDatabase
   };
-
-  // Initialiser automatiquement quand le DOM est prêt
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initDatabaseUI);
-  } else {
-    initDatabaseUI();
-  }
 
 })();

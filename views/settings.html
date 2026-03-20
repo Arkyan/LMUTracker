@@ -121,26 +121,26 @@
       </div>
     </div>
     <div class="settings-section-content">
-      <div id="dbStats" class="settings-field" style="padding:16px;background:rgba(59,130,246,0.1);border-radius:8px;border:1px solid rgba(59,130,246,0.2);">
-        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
-          <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-file"></i> Fichiers indexés</span>
-          <span id="dbStatsFiles" style="color:#e2e8f0;font-weight:600;">-</span>
+      <div id="dbStats" class="settings-field settings-stat-panel settings-stat-panel--blue">
+        <div class="settings-stat-row">
+          <span class="settings-stat-label"><i class="fas fa-file"></i> Fichiers indexés</span>
+          <span id="dbStatsFiles" class="settings-stat-value">-</span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
-          <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-flag-checkered"></i> Sessions enregistrées</span>
-          <span id="dbStatsSessions" style="color:#e2e8f0;font-weight:600;">-</span>
+        <div class="settings-stat-row">
+          <span class="settings-stat-label"><i class="fas fa-flag-checkered"></i> Sessions enregistrées</span>
+          <span id="dbStatsSessions" class="settings-stat-value">-</span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
-          <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-users"></i> Pilotes indexés</span>
-          <span id="dbStatsDrivers" style="color:#e2e8f0;font-weight:600;">-</span>
+        <div class="settings-stat-row">
+          <span class="settings-stat-label"><i class="fas fa-users"></i> Pilotes indexés</span>
+          <span id="dbStatsDrivers" class="settings-stat-value">-</span>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
-          <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-stopwatch"></i> Tours enregistrés</span>
-          <span id="dbStatsLaps" style="color:#e2e8f0;font-weight:600;">-</span>
+        <div class="settings-stat-row">
+          <span class="settings-stat-label"><i class="fas fa-stopwatch"></i> Tours enregistrés</span>
+          <span id="dbStatsLaps" class="settings-stat-value">-</span>
         </div>
-        <div style="display:flex;justify-content:space-between;">
-          <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-hdd"></i> Taille de la BDD</span>
-          <span id="dbStatsSize" style="color:#e2e8f0;font-weight:600;">-</span>
+        <div class="settings-stat-row settings-stat-row--last">
+          <span class="settings-stat-label"><i class="fas fa-hdd"></i> Taille de la BDD</span>
+          <span id="dbStatsSize" class="settings-stat-value">-</span>
         </div>
       </div>
       <div class="settings-help" style="margin-top:12px;">
@@ -174,17 +174,17 @@
       </div>
     </div>
     <div class="settings-section-content">
-      <div class="settings-field" style="padding:16px;background:rgba(167,139,250,0.1);border-radius:8px;border:1px solid rgba(167,139,250,0.2);">
-        <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
-          <span style="color:#94a3b8;font-size:14px;"><i class="fas fa-tag"></i> Version actuelle</span>
-          <span id="appVersion" style="color:#e2e8f0;font-weight:600;">-</span>
+      <div class="settings-field settings-stat-panel settings-stat-panel--purple">
+        <div class="settings-stat-row settings-stat-row--last">
+          <span class="settings-stat-label"><i class="fas fa-tag"></i> Version actuelle</span>
+          <span id="appVersion" class="settings-stat-value">-</span>
         </div>
-        <div id="updateStatus" style="display:none;padding:12px;background:rgba(34,197,94,0.1);border-radius:6px;border:1px solid rgba(34,197,94,0.3);margin-top:12px;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-            <i class="fas fa-download" style="color:#22c55e;"></i>
-            <span style="color:#22c55e;font-weight:600;">Mise à jour téléchargée</span>
+        <div id="updateStatus" class="settings-update-ready">
+          <div class="settings-update-ready__title">
+            <i class="fas fa-download"></i>
+            Mise à jour téléchargée
           </div>
-          <div style="color:#94a3b8;font-size:13px;">Une mise à jour est prête. Elle sera installée au prochain redémarrage.</div>
+          <div class="settings-update-ready__desc">Une mise à jour est prête. Elle sera installée au prochain redémarrage.</div>
         </div>
       </div>
       <div style="margin-top:12px;">
