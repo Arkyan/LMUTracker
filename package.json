@@ -65,8 +65,8 @@
   "devDependencies": {
     "dotenv": "^17.2.3",
     "dotenv-cli": "^11.0.0",
+    "electron-builder": "^26.7.0",
     "electron": "^40.1.0",
-    "electron-builder": "^26.0.12",
     "electron-rebuild": "^3.2.9",
     "rcedit": "^5.0.2"
   }
