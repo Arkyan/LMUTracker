@@ -1,6 +1,7 @@
 /**
  * Module de gestion de la base de données SQLite pour LMU Tracker
- * Permet d'éviter de réindexer les fichiers déjà parsés
+ * Stocke uniquement les données du pilote configuré (positions, tours).
+ * Les données complètes d'une session (tous les pilotes) sont lues depuis le XML à la demande.
  */
 
 (function() {
@@ -10,7 +11,7 @@
   const { app } = require('electron');
 
   let db = null;
-  const DB_VERSION = 3;
+  const DB_VERSION = 4;
 
   function arrayify(val) {
     if (val == null) return [];
@@ -29,9 +30,9 @@
       .filter(Boolean);
   }
 
-  // Extraire les changements de pilotes depuis le Stream et les Swaps (similaire à xmlParser)
+  // Extraire les co-pilotes depuis Swap + DriverChange du Stream
   function extractDriverChanges(sessionData) {
-    const byVehicle = {}; // { [vehName]: Set(names) }
+    const byVehicle = {};
     const ensure = (veh) => {
       if (!veh) return null;
       if (!byVehicle[veh]) byVehicle[veh] = new Set();
@@ -39,27 +40,21 @@
     };
 
     try {
-      const stream = sessionData?.Stream;
-      const changes = arrayify(stream?.DriverChange);
+      const changes = arrayify(sessionData?.Stream?.DriverChange);
       for (const change of changes) {
-        const changeText = (change && typeof change === 'object') ? (change['#text'] || '') : change;
-        if (typeof changeText !== 'string') continue;
-        const slotMatch = changeText.match(/Slot=(\d+)/);
-        const vehicleMatch = changeText.match(/Vehicle="([^"]+)"/);
-        const oldMatch = changeText.match(/Old="([^"]+)"/);
-        const newMatch = changeText.match(/New="([^"]+)"/);
-        if (!slotMatch || !vehicleMatch || !oldMatch || !newMatch) continue;
-        const veh = vehicleMatch[1];
+        const text = (change && typeof change === 'object') ? (change['#text'] || '') : change;
+        if (typeof text !== 'string') continue;
+        const veh = (text.match(/Vehicle="([^"]+)"/) || [])[1];
+        const old = (text.match(/Old="([^"]+)"/) || [])[1];
+        const nw  = (text.match(/New="([^"]+)"/) || [])[1];
+        if (!veh || !old || !nw) continue;
         const set = ensure(veh);
-        if (!set) continue;
-        set.add(oldMatch[1]);
-        set.add(newMatch[1]);
+        if (set) { set.add(old); set.add(nw); }
       }
     } catch (_) {}
 
     try {
-      const drivers = arrayify(sessionData?.Driver);
-      for (const driver of drivers) {
+      for (const driver of arrayify(sessionData?.Driver)) {
         if (!driver || typeof driver !== 'object') continue;
         const veh = driver.VehName;
         if (!veh) continue;
@@ -69,157 +64,116 @@
         if (!set) continue;
         if (driver.Name) set.add(driver.Name);
         for (const swap of swaps) {
-          const swapText = (swap && typeof swap === 'object') ? (swap['#text'] || '') : swap;
-          if (typeof swapText === 'string' && swapText.trim()) {
-            set.add(swapText);
-          }
+          const text = (swap && typeof swap === 'object') ? (swap['#text'] || '') : swap;
+          if (typeof text === 'string' && text.trim()) set.add(text);
         }
       }
     } catch (_) {}
 
     const out = {};
-    for (const [veh, set] of Object.entries(byVehicle)) {
-      out[veh] = Array.from(set);
-    }
+    for (const [veh, set] of Object.entries(byVehicle)) out[veh] = Array.from(set);
     return out;
   }
 
-  // Initialiser la base de données
+  // ── Initialisation ────────────────────────────────────────────────────────
+
   function initDatabase() {
     try {
-      const userDataPath = app.getPath('userData');
-      const dbPath = path.join(userDataPath, 'lmutracker.db');
-      
-      console.log(`[DB] Initialisation de la base de données: ${dbPath}`);
-      
+      const dbPath = path.join(app.getPath('userData'), 'lmutracker.db');
       db = new Database(dbPath);
-      db.pragma('journal_mode = WAL'); // Write-Ahead Logging pour meilleures performances
-      
-      // Créer les tables si elles n'existent pas
+      db.pragma('journal_mode = WAL');
       createTables();
-
-      // Migrer si nécessaire
       migrateDatabase();
-      
-      console.log('[DB] Base de données initialisée avec succès');
       return { ok: true };
     } catch (error) {
-      console.error('[DB] Erreur lors de l\'initialisation:', error);
+      console.error('[DB] Erreur init:', error);
       return { ok: false, error: error.message };
     }
   }
 
-  // Créer les tables
   function createTables() {
-    // Table pour stocker les métadonnées des fichiers
     db.exec(`
       CREATE TABLE IF NOT EXISTS file_metadata (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        file_path TEXT UNIQUE NOT NULL,
-        file_hash TEXT NOT NULL,
-        file_size INTEGER NOT NULL,
-        file_mtime INTEGER NOT NULL,
-        indexed_at INTEGER NOT NULL,
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path   TEXT UNIQUE NOT NULL,
+        file_hash   TEXT NOT NULL,
+        file_size   INTEGER NOT NULL,
+        file_mtime  INTEGER NOT NULL,
+        indexed_at  INTEGER NOT NULL,
         game_version TEXT,
-        track_venue TEXT,
+        track_venue  TEXT,
         track_course TEXT,
-        track_event TEXT,
+        track_event  TEXT,
         track_length REAL,
-        date_time INTEGER,
-        time_string TEXT
+        date_time    INTEGER,
+        time_string  TEXT
       );
-      
-      CREATE INDEX IF NOT EXISTS idx_file_path ON file_metadata(file_path);
-      CREATE INDEX IF NOT EXISTS idx_file_hash ON file_metadata(file_hash);
-      CREATE INDEX IF NOT EXISTS idx_indexed_at ON file_metadata(indexed_at);
-      CREATE INDEX IF NOT EXISTS idx_track_venue ON file_metadata(track_venue);
+      CREATE INDEX IF NOT EXISTS idx_file_path   ON file_metadata(file_path);
+      CREATE INDEX IF NOT EXISTS idx_file_hash   ON file_metadata(file_hash);
+      CREATE INDEX IF NOT EXISTS idx_date_time   ON file_metadata(date_time);
     `);
 
-    // Table pour stocker les sessions
     db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        file_id INTEGER NOT NULL,
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id      INTEGER NOT NULL,
         session_name TEXT NOT NULL,
         session_type TEXT NOT NULL,
-        date_time INTEGER,
-        time_string TEXT,
-        laps INTEGER,
-        minutes INTEGER,
+        date_time    INTEGER,
+        time_string  TEXT,
+        laps         INTEGER,
+        minutes      INTEGER,
+        most_laps    INTEGER,
         FOREIGN KEY (file_id) REFERENCES file_metadata(id) ON DELETE CASCADE
       );
-      
       CREATE INDEX IF NOT EXISTS idx_session_file_id ON sessions(file_id);
-      CREATE INDEX IF NOT EXISTS idx_session_type ON sessions(session_type);
+      CREATE INDEX IF NOT EXISTS idx_session_type    ON sessions(session_type);
     `);
 
-    // Table pour stocker les pilotes de chaque session
+    // Un seul driver par session : le pilote configuré (ou un de ses co-pilotes)
     db.exec(`
       CREATE TABLE IF NOT EXISTS drivers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        is_player INTEGER DEFAULT 0,
-        position INTEGER,
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id    INTEGER NOT NULL,
+        name          TEXT NOT NULL,
+        position      INTEGER,
         class_position INTEGER,
-        finish_status TEXT,
-        laps INTEGER,
-        best_lap_time REAL,
-        best_lap_num INTEGER,
-        vehicle_name TEXT,
-        veh_name TEXT,
-        vehicle_class TEXT,
+        finish_status  TEXT,
+        laps           INTEGER,
+        best_lap_time  REAL,
+        best_lap_num   INTEGER,
+        vehicle_name   TEXT,
+        veh_name       TEXT,
+        vehicle_class  TEXT,
         vehicle_number TEXT,
-        team_name TEXT,
-        swaps_json TEXT,
+        team_name      TEXT,
+        swaps_json     TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
-      
-      CREATE INDEX IF NOT EXISTS idx_driver_session_id ON drivers(session_id);
-      CREATE INDEX IF NOT EXISTS idx_driver_name ON drivers(name);
+      CREATE INDEX IF NOT EXISTS idx_driver_session_id   ON drivers(session_id);
       CREATE INDEX IF NOT EXISTS idx_driver_vehicle_class ON drivers(vehicle_class);
     `);
 
-    // Table pour stocker les tours de chaque pilote
     db.exec(`
       CREATE TABLE IF NOT EXISTS laps (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
         driver_id INTEGER NOT NULL,
-        lap_num INTEGER NOT NULL,
-        lap_time REAL,
-        sector1 REAL,
-        sector2 REAL,
-        sector3 REAL,
+        lap_num   INTEGER NOT NULL,
+        lap_time  REAL,
+        sector1   REAL,
+        sector2   REAL,
+        sector3   REAL,
         fuel_used REAL,
         FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE CASCADE
       );
-      
       CREATE INDEX IF NOT EXISTS idx_lap_driver_id ON laps(driver_id);
-      CREATE INDEX IF NOT EXISTS idx_lap_num ON laps(lap_num);
     `);
 
-    // Table pour stocker les données brutes du Stream (JSON compressé)
     db.exec(`
-      CREATE TABLE IF NOT EXISTS stream_data (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id INTEGER NOT NULL,
-        stream_json TEXT NOT NULL,
-        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-      );
-      
-      CREATE INDEX IF NOT EXISTS idx_stream_session_id ON stream_data(session_id);
+      CREATE TABLE IF NOT EXISTS db_version (version INTEGER PRIMARY KEY);
     `);
 
-    // Table pour la version de la BDD
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS db_version (
-        version INTEGER PRIMARY KEY
-      );
-    `);
-
-    // Insérer la version si elle n'existe pas
-    const versionRow = db.prepare('SELECT version FROM db_version LIMIT 1').get();
-    if (!versionRow) {
+    if (!db.prepare('SELECT version FROM db_version LIMIT 1').get()) {
       db.prepare('INSERT INTO db_version (version) VALUES (?)').run(DB_VERSION);
     }
   }
@@ -227,116 +181,97 @@
   function migrateDatabase() {
     if (!db) return;
     try {
-      const versionRow = db.prepare('SELECT version FROM db_version LIMIT 1').get();
-      const current = versionRow && typeof versionRow.version === 'number' ? versionRow.version : 0;
+      const row = db.prepare('SELECT version FROM db_version LIMIT 1').get();
+      const current = row?.version ?? 0;
 
-      // Toujours vérifier le schéma réel: il peut diverger de db_version (installations anciennes).
-      // Les ALTER TABLE sont idempotents via test PRAGMA.
-      const cols = db.prepare(`PRAGMA table_info(drivers)`).all().map(r => r.name);
-      const has = (c) => cols.includes(c);
+      // Supprimer stream_data (v3 → v4)
+      db.exec('DROP TABLE IF EXISTS stream_data');
 
-      if (!has('class_position')) db.exec('ALTER TABLE drivers ADD COLUMN class_position INTEGER');
-      if (!has('veh_name')) db.exec('ALTER TABLE drivers ADD COLUMN veh_name TEXT');
-      if (!has('swaps_json')) db.exec('ALTER TABLE drivers ADD COLUMN swaps_json TEXT');
-
-      // Mettre à jour la version
-      if (versionRow) {
-        db.prepare('UPDATE db_version SET version = ?').run(DB_VERSION);
-      } else {
-        db.prepare('INSERT INTO db_version (version) VALUES (?)').run(DB_VERSION);
+      // Ajouter most_laps si absent (schéma v4)
+      const sessionCols = db.prepare('PRAGMA table_info(sessions)').all().map(r => r.name);
+      if (!sessionCols.includes('most_laps')) {
+        db.exec('ALTER TABLE sessions ADD COLUMN most_laps INTEGER');
       }
 
-      if (current < DB_VERSION) {
-        console.log(`[DB] Migration appliquée: v${current} -> v${DB_VERSION}`);
-      } else {
-        console.log(`[DB] Schéma vérifié (db_version=v${current}, target=v${DB_VERSION})`);
+      // Supprimer is_player si présent (colonne supprimée en v4)
+      // SQLite ne supporte pas DROP COLUMN facilement sur vieilles versions, on l'ignore.
+
+      if (current < 4) {
+        // Vider les données de sessions/drivers/laps pour forcer une re-indexation propre.
+        // file_metadata est préservé pour conserver le tri par date de session.
+        db.exec('DELETE FROM laps');
+        db.exec('DELETE FROM drivers');
+        db.exec('DELETE FROM sessions');
+        db.prepare('UPDATE db_version SET version = ?').run(DB_VERSION);
+        console.log(`[DB] Migration v${current} → v${DB_VERSION} : sessions nettoyées, re-indexation en cours`);
       }
     } catch (error) {
-      console.error('[DB] Erreur de migration:', error);
+      console.error('[DB] Erreur migration:', error);
     }
   }
 
-  // Calculer un hash simple pour un fichier (basé sur chemin + taille + mtime)
-  function calculateFileHash(filePath, stats) {
-    const size = stats && typeof stats.size === 'number' ? stats.size : 0;
-    const mtimeKey = stats && typeof stats.mtimeMs === 'number' ? Math.floor(stats.mtimeMs) : 0;
-    return calculateFileHashFromParts(filePath, size, mtimeKey);
-  }
+  // ── Hachage / vérification ────────────────────────────────────────────────
 
   function calculateFileHashFromParts(filePath, size, mtimeKey) {
     const crypto = require('crypto');
-    const hash = crypto.createHash('md5');
-    // Important: on utilise un mtime arrondi (comme stocké en DB) pour stabilité
-    hash.update(`${filePath}:${size}:${mtimeKey}`);
-    return hash.digest('hex');
+    const h = crypto.createHash('md5');
+    h.update(`${filePath}:${size}:${mtimeKey}`);
+    return h.digest('hex');
   }
 
-  // Vérifier si un fichier est déjà indexé et à jour
   function isFileIndexed(filePath, stats) {
-    if (!db) return false;
-
+    if (!db) return { indexed: false };
     try {
-      const size = stats && typeof stats.size === 'number' ? stats.size : null;
-      const mtimeKey = stats && typeof stats.mtimeMs === 'number' ? Math.floor(stats.mtimeMs) : null;
+      const size     = stats?.size != null ? stats.size : null;
+      const mtimeKey = stats?.mtimeMs != null ? Math.floor(stats.mtimeMs) : null;
 
-      // Récupérer la ligne par chemin et comparer sur des champs stables.
-      const row = db.prepare(`
-        SELECT id, file_hash, file_size, file_mtime
-        FROM file_metadata
-        WHERE file_path = ?
-      `).get(filePath);
-
+      const row = db.prepare('SELECT id, file_hash, file_size, file_mtime FROM file_metadata WHERE file_path = ?').get(filePath);
       if (!row) return { indexed: false };
 
-      // Si on n'a pas de stats fiables, fallback sur l'ancien comportement hash.
       if (size == null || mtimeKey == null) {
-        const legacyHash = (() => {
-          try {
-            const crypto = require('crypto');
-            const h = crypto.createHash('md5');
-            h.update(`${filePath}:${stats?.size}:${stats?.mtimeMs}`);
-            return h.digest('hex');
-          } catch {
-            return null;
-          }
-        })();
-        if (legacyHash && row.file_hash === legacyHash) return { indexed: true, fileId: row.id };
+        // Fallback legacy hash
+        try {
+          const crypto = require('crypto');
+          const h = crypto.createHash('md5');
+          h.update(`${filePath}:${stats?.size}:${stats?.mtimeMs}`);
+          const legacyHash = h.digest('hex');
+          if (row.file_hash === legacyHash) return { indexed: true, fileId: row.id };
+        } catch {}
         return { indexed: false };
       }
 
-      const matchesStable = (Number(row.file_size) === Number(size)) && (Number(row.file_mtime) === Number(mtimeKey));
-      if (!matchesStable) return { indexed: false };
+      if (Number(row.file_size) !== Number(size) || Number(row.file_mtime) !== Number(mtimeKey)) {
+        return { indexed: false };
+      }
 
-      // Normaliser/mettre à jour le hash si besoin (évite faux négatifs futurs)
-      const expectedHash = calculateFileHashFromParts(filePath, size, mtimeKey);
-      if (row.file_hash !== expectedHash) {
-        try {
-          db.prepare('UPDATE file_metadata SET file_hash = ? WHERE id = ?').run(expectedHash, row.id);
-        } catch (_) {}
+      // Normaliser le hash si besoin
+      const expected = calculateFileHashFromParts(filePath, size, mtimeKey);
+      if (row.file_hash !== expected) {
+        try { db.prepare('UPDATE file_metadata SET file_hash = ? WHERE id = ?').run(expected, row.id); } catch (_) {}
       }
 
       return { indexed: true, fileId: row.id };
     } catch (error) {
-      console.error('[DB] Erreur lors de la vérification du fichier:', error);
+      console.error('[DB] isFileIndexed:', error);
       return { indexed: false };
     }
   }
 
-  // Indexer un fichier complet
+  // ── Indexation ────────────────────────────────────────────────────────────
+
   function indexFile(filePath, stats, parsedData) {
     if (!db) return { ok: false, error: 'Base de données non initialisée' };
-
     try {
-      const fileHash = calculateFileHash(filePath, stats);
       const raceResults = parsedData?.rFactorXML?.RaceResults || parsedData?.RaceResults;
+      if (!raceResults) return { ok: false, error: 'Données RaceResults non trouvées' };
 
-      if (!raceResults) {
-        return { ok: false, error: 'Données RaceResults non trouvées' };
-      }
+      const fileHash = calculateFileHashFromParts(
+        filePath,
+        stats.size,
+        Math.floor(stats.mtimeMs)
+      );
 
-      // Commencer une transaction
-      const insertTransaction = db.transaction((filePath, fileHash, stats, raceResults) => {
-        // Insérer ou mettre à jour les métadonnées du fichier
+      const tx = db.transaction(() => {
         db.prepare(`
           INSERT INTO file_metadata (
             file_path, file_hash, file_size, file_mtime, indexed_at,
@@ -344,142 +279,99 @@
             date_time, time_string
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(file_path) DO UPDATE SET
-            file_hash = excluded.file_hash,
-            file_size = excluded.file_size,
-            file_mtime = excluded.file_mtime,
-            indexed_at = excluded.indexed_at,
+            file_hash    = excluded.file_hash,
+            file_size    = excluded.file_size,
+            file_mtime   = excluded.file_mtime,
+            indexed_at   = excluded.indexed_at,
             game_version = excluded.game_version,
-            track_venue = excluded.track_venue,
+            track_venue  = excluded.track_venue,
             track_course = excluded.track_course,
-            track_event = excluded.track_event,
+            track_event  = excluded.track_event,
             track_length = excluded.track_length,
-            date_time = excluded.date_time,
-            time_string = excluded.time_string
+            date_time    = excluded.date_time,
+            time_string  = excluded.time_string
         `).run(
-          filePath,
-          fileHash,
-          stats.size,
-          Math.floor(stats.mtimeMs),
-          Date.now(),
-          raceResults.GameVersion || null,
-          raceResults.TrackVenue || null,
-          raceResults.TrackCourse || null,
-          raceResults.TrackEvent || null,
-          raceResults.TrackLength ? parseFloat(raceResults.TrackLength) : null,
-          raceResults.DateTime ? parseInt(raceResults.DateTime) : null,
-          raceResults.TimeString || null
+          filePath, fileHash,
+          stats.size, Math.floor(stats.mtimeMs), Date.now(),
+          raceResults.GameVersion  || null,
+          raceResults.TrackVenue   || null,
+          raceResults.TrackCourse  || null,
+          raceResults.TrackEvent   || null,
+          raceResults.TrackLength  ? parseFloat(raceResults.TrackLength) : null,
+          raceResults.DateTime     ? parseInt(raceResults.DateTime) : null,
+          raceResults.TimeString   || null
         );
 
-        // Toujours relire l'ID réel (UPSERT peut ne pas fournir lastInsertRowid fiable)
         const fileRow = db.prepare('SELECT id FROM file_metadata WHERE file_path = ?').get(filePath);
-        const fileId = fileRow?.id;
-        if (!fileId) {
-          throw new Error('Impossible de récupérer file_id après UPSERT');
-        }
+        if (!fileRow?.id) throw new Error('Impossible de récupérer file_id');
+        const fileId = fileRow.id;
 
-        // Supprimer les anciennes sessions pour ce fichier
         db.prepare('DELETE FROM sessions WHERE file_id = ?').run(fileId);
-
-        // Indexer les sessions
         indexSessions(fileId, raceResults);
-
         return fileId;
       });
 
-      const fileId = insertTransaction(filePath, fileHash, stats, raceResults);
-      
-      console.log(`[DB] Fichier indexé: ${filePath} (ID: ${fileId})`);
+      const fileId = tx();
       return { ok: true, fileId };
     } catch (error) {
-      console.error('[DB] Erreur lors de l\'indexation du fichier:', error);
+      console.error('[DB] indexFile:', error);
       return { ok: false, error: error.message };
     }
   }
 
-  // Indexer les sessions d'un fichier
   function indexSessions(fileId, raceResults) {
-    // Ne pas dépendre d'une liste fixe: LMU peut exposer des clés différentes (ex: Q1/P1, Qualifying, etc.)
     const entries = Object.entries(raceResults || {}).filter(([k, v]) => {
-      if (!k) return false;
-      if (!v || typeof v !== 'object') return false;
-      const kk = String(k).toLowerCase();
-
-      // Exclure explicitement les champs globaux connus de RaceResults
-      if (['stream', 'gameversion', 'trackvenue', 'trackcourse', 'trackevent', 'tracklength', 'datetime', 'timestring'].includes(kk)) {
-        return false;
-      }
-
-      // Clés "session-like" (classiques)
+      if (!k || !v || typeof v !== 'object') return false;
+      const kk = k.toLowerCase();
+      if (['stream','gameversion','trackvenue','trackcourse','trackevent','tracklength','datetime','timestring'].includes(kk)) return false;
       if (/(race|qual|practice|practise|warm)/i.test(k)) return true;
-
-      // Formats courts fréquents: Q1/Q2, P1/P2...
-      if (/^q\d+$/i.test(k)) return true;
-      if (/^p\d+$/i.test(k)) return true;
-
-      // Fallback: si l'objet contient des drivers, c'est une session
+      if (/^[qp]\d+$/i.test(k)) return true;
       if ('Driver' in v) return true;
-
       return false;
     });
 
-    for (const [sessionKey, sessionData] of entries) {
+    const configuredDriver = getConfiguredDriverName();
+    const driverNames = getConfiguredDriverNames(configuredDriver);
 
+    for (const [sessionKey, sessionData] of entries) {
       try {
         const sessionType = getSessionType(sessionKey);
+        const mostLaps = sessionData.MostLapsCompleted ? parseInt(sessionData.MostLapsCompleted) : null;
+
         const sessionInfo = db.prepare(`
-          INSERT INTO sessions (
-            file_id, session_name, session_type, date_time, time_string, laps, minutes
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO sessions (file_id, session_name, session_type, date_time, time_string, laps, minutes, most_laps)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          fileId,
-          sessionKey,
-          sessionType,
+          fileId, sessionKey, sessionType,
           sessionData.DateTime ? parseInt(sessionData.DateTime) : null,
           sessionData.TimeString || null,
-          sessionData.Laps ? parseInt(sessionData.Laps) : null,
-          sessionData.Minutes ? parseInt(sessionData.Minutes) : null
+          sessionData.Laps    ? parseInt(sessionData.Laps)    : null,
+          sessionData.Minutes ? parseInt(sessionData.Minutes) : null,
+          mostLaps
         );
 
         const sessionId = sessionInfo.lastInsertRowid;
 
-        // Indexer les pilotes (ne garder que les entrées liées au pilote configuré, y compris swaps)
-        if (sessionData.Driver) {
-          const configuredDriver = getConfiguredDriverName();
+        if (sessionData.Driver && driverNames.length > 0) {
           const driverChanges = extractDriverChanges(sessionData);
-          indexDrivers(sessionId, sessionData.Driver, configuredDriver, driverChanges);
-        }
-
-        // Stocker le Stream en JSON
-        if (sessionData.Stream) {
-          const streamJson = JSON.stringify(sessionData.Stream);
-          db.prepare(`
-            INSERT INTO stream_data (session_id, stream_json)
-            VALUES (?, ?)
-          `).run(sessionId, streamJson);
+          indexPlayerDriver(sessionId, sessionData.Driver, driverNames, driverChanges);
         }
       } catch (error) {
-        console.error(`[DB] Erreur lors de l'indexation de la session ${sessionKey}:`, error);
+        console.error(`[DB] indexSessions ${sessionKey}:`, error);
       }
     }
   }
 
-  // Indexer les pilotes d'une session
-  function indexDrivers(sessionId, driversData, configuredDriverName, driverChangesByVehicle) {
-    const drivers = Array.isArray(driversData) ? driversData : [driversData];
-
-    const driverNames = getConfiguredDriverNames(configuredDriverName);
+  // Indexe uniquement le pilote configuré (et ses co-pilotes via swap/stream)
+  function indexPlayerDriver(sessionId, driversData, driverNames, driverChangesByVehicle) {
+    const drivers = arrayify(driversData);
 
     const matchesConfigured = (driver) => {
-      if (!driverNames.length) return true; // Pas de pilote configuré: on conserve les laps (comportement historique)
       try {
         const vehName = driver?.VehName || '';
-        const fromStream = (driverChangesByVehicle && vehName && driverChangesByVehicle[vehName]) ? driverChangesByVehicle[vehName] : null;
-        const allNames = (fromStream && Array.isArray(fromStream) && fromStream.length)
-          ? fromStream
-          : [driver?.Name].filter(Boolean);
-        return allNames
-          .map(normalizeName)
-          .some(n => driverNames.includes(n));
+        const fromStream = driverChangesByVehicle[vehName];
+        const allNames = (fromStream && fromStream.length) ? fromStream : [driver?.Name].filter(Boolean);
+        return allNames.map(normalizeName).some(n => driverNames.includes(n));
       } catch (_) {
         return false;
       }
@@ -487,175 +379,117 @@
 
     for (const driver of drivers) {
       if (!driver || typeof driver !== 'object') continue;
+      if (!matchesConfigured(driver)) continue;
 
       try {
+        const swaps = (() => {
+          try {
+            const list = arrayify(driver.Swap)
+              .map(s => (s && typeof s === 'object') ? (s['#text'] || '') : s)
+              .filter(s => typeof s === 'string' && s.trim());
+            return list.length ? JSON.stringify(list) : null;
+          } catch (_) { return null; }
+        })();
+
         const driverInfo = db.prepare(`
           INSERT INTO drivers (
-            session_id, name, is_player, position, class_position, finish_status, laps,
+            session_id, name, position, class_position, finish_status, laps,
             best_lap_time, best_lap_num, vehicle_name, veh_name, vehicle_class,
             vehicle_number, team_name, swaps_json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           sessionId,
-          driver.Name || null,
-          driver.isPlayer === 1 ? 1 : 0,
-          driver.Position ? parseInt(driver.Position) : null,
+          driver.Name        || null,
+          driver.Position    ? parseInt(driver.Position)    : null,
           driver.ClassPosition ? parseInt(driver.ClassPosition) : null,
           driver.FinishStatus || null,
-          driver.Laps ? parseInt(driver.Laps) : null,
+          driver.Laps        ? parseInt(driver.Laps)        : null,
           driver.BestLapTime ? parseFloat(driver.BestLapTime) : null,
-          driver.BestLapNum ? parseInt(driver.BestLapNum) : null,
+          driver.BestLapNum  ? parseInt(driver.BestLapNum)  : null,
           driver.VehType || driver.CarType || null,
-          driver.VehName || null,
-          driver.CarClass || null,
-          driver.CarNumber || null,
-          driver.TeamName || null
-          , (() => {
-            try {
-              const swaps = arrayify(driver.Swap)
-                .map(s => (s && typeof s === 'object') ? (s['#text'] || '') : s)
-                .filter(s => typeof s === 'string' && s.trim())
-                .map(s => String(s));
-              return swaps.length ? JSON.stringify(swaps) : null;
-            } catch (_) {
-              return null;
-            }
-          })()
+          driver.VehName     || null,
+          driver.CarClass    || null,
+          driver.CarNumber   || null,
+          driver.TeamName    || null,
+          swaps
         );
 
-        const driverId = driverInfo.lastInsertRowid;
-
-        // Indexer les tours uniquement pour le pilote configuré (et ses swaps)
-        if (driver.Lap && matchesConfigured(driver)) {
-          indexLaps(driverId, driver.Lap);
+        if (driver.Lap) {
+          indexLaps(driverInfo.lastInsertRowid, driver.Lap);
         }
       } catch (error) {
-        console.error(`[DB] Erreur lors de l'indexation du pilote:`, error);
+        console.error('[DB] indexPlayerDriver:', error);
       }
     }
   }
 
-  // Indexer les tours d'un pilote
   function indexLaps(driverId, lapsData) {
-    const laps = Array.isArray(lapsData) ? lapsData : [lapsData];
-
-    for (const lap of laps) {
+    for (const lap of arrayify(lapsData)) {
       if (!lap || typeof lap !== 'object') continue;
 
-      // Skip si pas de lap_num (requis)
-      const lapNum = lap.num !== undefined ? parseInt(lap.num) : (lap['@_num'] !== undefined ? parseInt(lap['@_num']) : null);
+      const lapNum = lap.num !== undefined ? parseInt(lap.num)
+        : lap['@_num'] !== undefined ? parseInt(lap['@_num']) : null;
       if (lapNum === null || isNaN(lapNum)) continue;
 
       try {
-        // Supporter à la fois le format parsé (num, timeSec, s1...) et le format XML brut (@_num, #text, @_s1...)
-        const lapTime = lap.timeSec !== undefined ? parseFloat(lap.timeSec) : 
-                       (lap['#text'] !== undefined ? parseFloat(lap['#text']) : 
-                       (lap.et !== undefined ? parseFloat(lap.et) : null));
-        
-        const sector1 = lap.s1 !== undefined ? parseFloat(lap.s1) : 
-                       (lap['@_s1'] !== undefined ? parseFloat(lap['@_s1']) : null);
-        
-        const sector2 = lap.s2 !== undefined ? parseFloat(lap.s2) : 
-                       (lap['@_s2'] !== undefined ? parseFloat(lap['@_s2']) : null);
-        
-        const sector3 = lap.s3 !== undefined ? parseFloat(lap.s3) : 
-                       (lap['@_s3'] !== undefined ? parseFloat(lap['@_s3']) : null);
-        
-        const fuelUsed = lap.fuel !== undefined ? parseFloat(lap.fuel) : 
-                        (lap['@_fuel'] !== undefined ? parseFloat(lap['@_fuel']) : null);
+        const lapTime = lap.timeSec  !== undefined ? parseFloat(lap.timeSec)
+          : lap['#text'] !== undefined ? parseFloat(lap['#text'])
+          : lap.et !== undefined       ? parseFloat(lap.et) : null;
+
+        const s1 = lap.s1 !== undefined ? parseFloat(lap.s1) : lap['@_s1'] !== undefined ? parseFloat(lap['@_s1']) : null;
+        const s2 = lap.s2 !== undefined ? parseFloat(lap.s2) : lap['@_s2'] !== undefined ? parseFloat(lap['@_s2']) : null;
+        const s3 = lap.s3 !== undefined ? parseFloat(lap.s3) : lap['@_s3'] !== undefined ? parseFloat(lap['@_s3']) : null;
+        const fuel = lap.fuel !== undefined ? parseFloat(lap.fuel) : lap['@_fuel'] !== undefined ? parseFloat(lap['@_fuel']) : null;
 
         db.prepare(`
-          INSERT INTO laps (
-            driver_id, lap_num, lap_time, sector1, sector2, sector3, fuel_used
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          driverId,
-          lapNum,
-          lapTime,
-          sector1,
-          sector2,
-          sector3,
-          fuelUsed
-        );
+          INSERT INTO laps (driver_id, lap_num, lap_time, sector1, sector2, sector3, fuel_used)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(driverId, lapNum, lapTime, s1, s2, s3, fuel);
       } catch (error) {
-        console.error(`[DB] Erreur lors de l'indexation du tour:`, error);
+        console.error('[DB] indexLaps:', error);
       }
     }
   }
 
-  // Récupérer le nom du pilote configuré
+  // ── Lecture ───────────────────────────────────────────────────────────────
+
   function getConfiguredDriverName() {
     try {
-      const { app } = require('electron');
-      const fs = require('fs');
-      const path = require('path');
       const settingsPath = path.join(app.getPath('userData'), 'settings.json');
       if (fs.existsSync(settingsPath)) {
-        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-        return settings.driverName || null;
+        return JSON.parse(fs.readFileSync(settingsPath, 'utf8')).driverName || null;
       }
     } catch (e) {
-      console.warn('[DB] Impossible de lire le nom du pilote configuré:', e.message);
+      console.warn('[DB] Lecture settings:', e.message);
     }
     return null;
   }
 
-  // Déterminer le type de session
-  function getSessionType(sessionKey) {
-    const key = sessionKey.toLowerCase();
-    if (key.includes('race')) return 'race';
-    if (key.includes('qual')) return 'qual';
-    // Formats courts fréquents: Q1/Q2/P1/P2
-    if (/^q\d+$/.test(key)) return 'qual';
-    if (key.includes('practice') || key.includes('practise') || /^p\d+$/.test(key)) return 'practice';
-    if (key.includes('warm')) return 'warmup';
+  function getSessionType(key) {
+    const k = key.toLowerCase();
+    if (k.includes('race')) return 'race';
+    if (k.includes('qual') || /^q\d+$/.test(k)) return 'qual';
+    if (k.includes('practice') || k.includes('practise') || /^p\d+$/.test(k)) return 'practice';
+    if (k.includes('warm')) return 'warmup';
     return 'unknown';
   }
 
-  // Récupérer les données d'un fichier depuis la BDD
   function getFileData(filePath) {
     if (!db) return null;
-
     try {
-      const fileRow = db.prepare(`
-        SELECT * FROM file_metadata WHERE file_path = ?
-      `).get(filePath);
-
+      const fileRow = db.prepare('SELECT * FROM file_metadata WHERE file_path = ?').get(filePath);
       if (!fileRow) return null;
 
-      const sessions = db.prepare(`
-        SELECT * FROM sessions WHERE file_id = ?
-      `).all(fileRow.id);
-
-      const result = {
-        metadata: fileRow,
-        sessions: []
-      };
+      const sessions = db.prepare('SELECT * FROM sessions WHERE file_id = ?').all(fileRow.id);
+      const result = { metadata: fileRow, sessions: [] };
 
       for (const session of sessions) {
-        const drivers = db.prepare(`
-          SELECT * FROM drivers WHERE session_id = ?
-        `).all(session.id);
-
-        const streamRow = db.prepare(`
-          SELECT stream_json FROM stream_data WHERE session_id = ?
-        `).get(session.id);
-
-        const sessionData = {
-          ...session,
-          drivers: [],
-          stream: streamRow ? JSON.parse(streamRow.stream_json) : null
-        };
+        const drivers = db.prepare('SELECT * FROM drivers WHERE session_id = ?').all(session.id);
+        const sessionData = { ...session, drivers: [] };
 
         for (const driver of drivers) {
-          const laps = db.prepare(`
-            SELECT * FROM laps WHERE driver_id = ?
-          `).all(driver.id);
-
-          sessionData.drivers.push({
-            ...driver,
-            laps
-          });
+          const laps = db.prepare('SELECT * FROM laps WHERE driver_id = ?').all(driver.id);
+          sessionData.drivers.push({ ...driver, laps });
         }
 
         result.sessions.push(sessionData);
@@ -663,183 +497,180 @@
 
       return result;
     } catch (error) {
-      console.error('[DB] Erreur lors de la récupération des données:', error);
+      console.error('[DB] getFileData:', error);
       return null;
     }
   }
 
-  // Récupérer toutes les métadonnées des fichiers indexés
   function getAllFileMetadata() {
     if (!db) return [];
-
     try {
-      return db.prepare(`
-        SELECT * FROM file_metadata ORDER BY date_time DESC
-      `).all();
+      return db.prepare('SELECT * FROM file_metadata ORDER BY date_time DESC').all();
     } catch (error) {
-      console.error('[DB] Erreur lors de la récupération des métadonnées:', error);
+      console.error('[DB] getAllFileMetadata:', error);
       return [];
     }
   }
 
-  // Récupérer uniquement les champs de date/heure d'un fichier (léger)
   function getFileTimeInfo(filePath) {
     if (!db) return null;
     try {
-      return db.prepare(`
-        SELECT date_time, time_string
-        FROM file_metadata
-        WHERE file_path = ?
-      `).get(filePath);
+      return db.prepare('SELECT date_time, time_string FROM file_metadata WHERE file_path = ?').get(filePath);
     } catch (error) {
-      console.error('[DB] Erreur lors de la récupération de la date du fichier:', error);
+      console.error('[DB] getFileTimeInfo:', error);
       return null;
     }
   }
 
-  // Nettoyer les fichiers qui n'existent plus
+  // Retourne un Map { filePath → { date_time, time_string, file_size, file_mtime } } pour tous les fichiers indexés
+  function getAllFileTimeInfoMap() {
+    if (!db) return new Map();
+    try {
+      const rows = db.prepare('SELECT file_path, date_time, time_string, file_size, file_mtime FROM file_metadata').all();
+      return new Map(rows.map(r => [r.file_path, r]));
+    } catch (error) {
+      console.error('[DB] getAllFileTimeInfoMap:', error);
+      return new Map();
+    }
+  }
+
+  // ── Maintenance ───────────────────────────────────────────────────────────
+
   function cleanupMissingFiles() {
     if (!db) return { ok: false, error: 'Base de données non initialisée' };
-
     try {
       const allFiles = db.prepare('SELECT id, file_path FROM file_metadata').all();
       let deleted = 0;
-
-      console.log(`[DB] Nettoyage: vérification de ${allFiles.length} fichiers...`);
-
       for (const file of allFiles) {
-        const exists = fs.existsSync(file.file_path);
-        console.log(`[DB] Fichier ${file.file_path}: ${exists ? 'existe' : 'MANQUANT'}`);
-        
-        if (!exists) {
+        if (!fs.existsSync(file.file_path)) {
           db.prepare('DELETE FROM file_metadata WHERE id = ?').run(file.id);
           deleted++;
-          console.log(`[DB] Fichier supprimé de la BDD: ${file.file_path}`);
         }
       }
-
-      console.log(`[DB] Nettoyage terminé: ${deleted} fichier(s) supprimé(s)`);
       return { ok: true, deleted };
     } catch (error) {
-      console.error('[DB] Erreur lors du nettoyage:', error);
+      console.error('[DB] cleanupMissingFiles:', error);
       return { ok: false, error: error.message };
     }
   }
 
-  // Fermer la base de données
   function closeDatabase() {
     if (db) {
       db.close();
       db = null;
-      console.log('[DB] Base de données fermée');
     }
   }
 
-  // Obtenir les statistiques de la BDD
   function getDatabaseStats() {
     if (!db) return null;
-
     try {
       const stats = {
-        files: db.prepare('SELECT COUNT(*) as count FROM file_metadata').get().count,
-        sessions: db.prepare('SELECT COUNT(*) as count FROM sessions').get().count,
-        drivers: db.prepare('SELECT COUNT(*) as count FROM drivers').get().count,
-        laps: db.prepare('SELECT COUNT(*) as count FROM laps').get().count,
-        dbSize: 0
+        files:    db.prepare('SELECT COUNT(*) as c FROM file_metadata').get().c,
+        sessions: db.prepare('SELECT COUNT(*) as c FROM sessions').get().c,
+        drivers:  db.prepare('SELECT COUNT(*) as c FROM drivers').get().c,
+        laps:     db.prepare('SELECT COUNT(*) as c FROM laps').get().c,
+        dbSize:   0
       };
-
-      // Taille de la BDD
-      const userDataPath = app.getPath('userData');
-      const dbPath = path.join(userDataPath, 'lmutracker.db');
-      if (fs.existsSync(dbPath)) {
-        stats.dbSize = fs.statSync(dbPath).size;
-      }
-
+      const dbPath = path.join(app.getPath('userData'), 'lmutracker.db');
+      if (fs.existsSync(dbPath)) stats.dbSize = fs.statSync(dbPath).size;
       return stats;
     } catch (error) {
-      console.error('[DB] Erreur lors de la récupération des statistiques:', error);
+      console.error('[DB] getDatabaseStats:', error);
       return null;
     }
   }
 
-  // Supprimer complètement la base de données et la réinitialiser
+  // Indexer plusieurs fichiers en une seule transaction (beaucoup plus rapide)
+  function batchIndexFiles(items) {
+    if (!db || !items?.length) return;
+    try {
+      db.transaction(() => {
+        for (const { filePath, stats, parsed } of items) {
+          try { _indexFileSingle(filePath, stats, parsed); } catch (_) {}
+        }
+      })();
+    } catch (err) {
+      console.error('[DB] batchIndexFiles:', err);
+    }
+  }
+
+  // Version interne de indexFile sans transaction propre (pour utilisation dans batchIndexFiles)
+  function _indexFileSingle(filePath, stats, parsedData) {
+    const raceResults = parsedData?.rFactorXML?.RaceResults || parsedData?.RaceResults;
+    if (!raceResults) return;
+
+    const fileHash = calculateFileHashFromParts(filePath, stats.size, Math.floor(stats.mtimeMs));
+
+    db.prepare(`
+      INSERT INTO file_metadata (
+        file_path, file_hash, file_size, file_mtime, indexed_at,
+        game_version, track_venue, track_course, track_event, track_length,
+        date_time, time_string
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(file_path) DO UPDATE SET
+        file_hash    = excluded.file_hash,
+        file_size    = excluded.file_size,
+        file_mtime   = excluded.file_mtime,
+        indexed_at   = excluded.indexed_at,
+        game_version = excluded.game_version,
+        track_venue  = excluded.track_venue,
+        track_course = excluded.track_course,
+        track_event  = excluded.track_event,
+        track_length = excluded.track_length,
+        date_time    = excluded.date_time,
+        time_string  = excluded.time_string
+    `).run(
+      filePath, fileHash,
+      stats.size, Math.floor(stats.mtimeMs), Date.now(),
+      raceResults.GameVersion  || null,
+      raceResults.TrackVenue   || null,
+      raceResults.TrackCourse  || null,
+      raceResults.TrackEvent   || null,
+      raceResults.TrackLength  ? parseFloat(raceResults.TrackLength) : null,
+      raceResults.DateTime     ? parseInt(raceResults.DateTime) : null,
+      raceResults.TimeString   || null
+    );
+
+    const fileRow = db.prepare('SELECT id FROM file_metadata WHERE file_path = ?').get(filePath);
+    if (!fileRow?.id) return;
+    const fileId = fileRow.id;
+
+    db.prepare('DELETE FROM sessions WHERE file_id = ?').run(fileId);
+    indexSessions(fileId, raceResults);
+  }
+
   function resetDatabase() {
     try {
-      console.log('[DB] Réinitialisation de la base de données...');
-      
-      // Fermer la connexion si ouverte
       if (db) {
-        try {
-          // Forcer le checkpoint et fermer proprement
-          db.pragma('wal_checkpoint(TRUNCATE)');
-          db.close();
-        } catch (e) {
-          console.warn('[DB] Erreur lors de la fermeture:', e.message);
-        }
+        try { db.pragma('wal_checkpoint(TRUNCATE)'); db.close(); } catch (_) {}
         db = null;
       }
 
-      // Attendre un peu pour que le fichier soit complètement libéré
-      const sleep = (ms) => {
-        const start = Date.now();
-        while (Date.now() - start < ms) {}
-      };
-      sleep(100);
+      const base = app.getPath('userData');
+      const dbPath  = path.join(base, 'lmutracker.db');
+      const walPath = path.join(base, 'lmutracker.db-wal');
+      const shmPath = path.join(base, 'lmutracker.db-shm');
 
-      // Supprimer le fichier de la base de données
-      const userDataPath = app.getPath('userData');
-      const dbPath = path.join(userDataPath, 'lmutracker.db');
-      const walPath = path.join(userDataPath, 'lmutracker.db-wal');
-      const shmPath = path.join(userDataPath, 'lmutracker.db-shm');
-
-      // Supprimer les fichiers WAL et SHM d'abord
-      try {
-        if (fs.existsSync(walPath)) {
-          fs.unlinkSync(walPath);
-          console.log('[DB] Fichier WAL supprimé');
-        }
-      } catch (e) {
-        console.warn('[DB] Impossible de supprimer le WAL:', e.message);
+      for (const p of [walPath, shmPath, dbPath]) {
+        try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {}
       }
 
-      try {
-        if (fs.existsSync(shmPath)) {
-          fs.unlinkSync(shmPath);
-          console.log('[DB] Fichier SHM supprimé');
-        }
-      } catch (e) {
-        console.warn('[DB] Impossible de supprimer le SHM:', e.message);
-      }
-
-      // Puis supprimer la base principale
-      if (fs.existsSync(dbPath)) {
-        fs.unlinkSync(dbPath);
-        console.log('[DB] Fichier de base de données supprimé');
-      }
-
-      // Réinitialiser
-      const initResult = initDatabase();
-      
-      if (initResult.ok) {
-        console.log('[DB] Base de données réinitialisée avec succès');
-        return { ok: true, message: 'Base de données réinitialisée' };
-      } else {
-        return { ok: false, error: initResult.error };
-      }
+      return initDatabase();
     } catch (error) {
-      console.error('[DB] Erreur lors de la réinitialisation:', error);
+      console.error('[DB] resetDatabase:', error);
       return { ok: false, error: error.message };
     }
   }
 
-  // Exporter les fonctions
   module.exports = {
     initDatabase,
     isFileIndexed,
     indexFile,
+    batchIndexFiles,
     getFileData,
     getAllFileMetadata,
     getFileTimeInfo,
+    getAllFileTimeInfoMap,
     cleanupMissingFiles,
     resetDatabase,
     closeDatabase,

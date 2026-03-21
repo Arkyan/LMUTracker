@@ -22,7 +22,7 @@ parentPort.on('message', async (msg) => {
       fs.stat(filePath)
     ]);
     const parsed = parser.parse(content);
-    parentPort.postMessage({ ok: true, result: { filePath, parsed, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString() } });
+    parentPort.postMessage({ ok: true, result: { filePath, parsed, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString(), size: stat.size } });
   } catch (err) {
     try {
       const stat = await fs.stat(filePath);

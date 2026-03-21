@@ -19,6 +19,13 @@ registerIpcHandlers();
 registerSettingsHandlers();
 
 app.whenReady().then(() => {
+  // Supprimer l'ancien sessions-cache.v1.json (remplacé par SQLite)
+  try {
+    const fs = require('fs');
+    const oldCache = require('path').join(app.getPath('userData'), 'sessions-cache.v1.json');
+    if (fs.existsSync(oldCache)) fs.unlinkSync(oldCache);
+  } catch {}
+
   const dbInit = dbManager.initDatabase();
   if (dbInit.ok) {
     devLog('[Main] Base de données initialisée');

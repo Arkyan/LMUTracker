@@ -22,6 +22,8 @@ async function initializeApp() {
           { viewName: 'history', elementId: 'view-history' },
           { viewName: 'vehicles', elementId: 'view-vehicles' },
           { viewName: 'vehicle-detail', elementId: 'view-vehicle-detail' },
+          { viewName: 'tracks', elementId: 'view-tracks' },
+          { viewName: 'track-detail', elementId: 'view-track-detail' },
           { viewName: 'settings', elementId: 'view-settings' }
         ];
 
@@ -100,6 +102,8 @@ async function initializeApp() {
       clearTimeout(window.__lmu_reRenderViewTimer);
       window.__lmu_reRenderViewTimer = setTimeout(() => {
         if ((current === 'vehicles' || current === 'vehicleDetail') && nav) {
+          nav.switchView(current);
+        } else if ((current === 'tracks' || current === 'trackDetail') && nav) {
           nav.switchView(current);
         }
       }, delay);

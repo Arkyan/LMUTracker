@@ -12,6 +12,8 @@
     history: null,
     vehicles: null,
     vehicleDetail: null,
+    tracks: null,
+    trackDetail: null,
     settings: null
   };
   let navButtons = null;
@@ -22,6 +24,8 @@
     views.settings = document.getElementById('view-settings');
     views.vehicles = document.getElementById('view-vehicles');
     views.vehicleDetail = document.getElementById('view-vehicle-detail');
+    views.tracks = document.getElementById('view-tracks');
+    views.trackDetail = document.getElementById('view-track-detail');
     navButtons = document.querySelectorAll('.nav-btn');
 
     navButtons.forEach(btn => {
@@ -191,6 +195,57 @@
       } else {
         container.innerHTML = `<div class="card"><p class="muted">Aucune donnée disponible</p></div>`;
       }
+    } else if (view === 'tracks') {
+      const container = document.getElementById('tracksContent');
+      if (!container) return;
+      const driverName = window.LMUStorage?.getConfiguredDriverName?.() || '';
+      const files = window.LMUFileManager?.getLastScannedFiles?.() || [];
+      if (!driverName.trim()) {
+        container.innerHTML = `
+          <div class="card no-hover" style="text-align:center;padding:40px;">
+            <div style="font-size:48px;margin-bottom:16px;"><i class="fas fa-user"></i></div>
+            <h3 style="margin-bottom:12px;color:var(--text);">Aucun pilote configuré</h3>
+            <p class="muted" style="margin-bottom:16px;">Renseignez votre nom de pilote dans les paramètres pour voir vos circuits.</p>
+            <button class="btn primary" onclick="switchView('settings')"><i class="fas fa-cog"></i> Aller aux paramètres</button>
+          </div>
+        `;
+        return;
+      }
+      const tracksData = window.LMUStatsCalculator?.getTracksForDriver?.(driverName, files) || {};
+      container.innerHTML = window.LMUTrackManager?.generateTracksPage?.(tracksData) || '';
+    } else if (view === 'trackDetail') {
+      const container = document.getElementById('trackDetailContent');
+      if (!container) return;
+      const driverName = window.LMUStorage?.getConfiguredDriverName?.() || '';
+      const files = window.LMUFileManager?.getLastScannedFiles?.() || [];
+      const { venue, course } = window.__lmu_currentTrack || {};
+      const selectedVehicle = window.__lmu_currentTrackVehicle || null;
+      if (!venue) { switchView('tracks'); return; }
+
+      // Get all vehicles for this track
+      const tracksData = window.LMUStatsCalculator?.getTracksForDriver?.(driverName, files) || {};
+      const trackKey = `${venue}||${course}`;
+      const trackInfo = tracksData[trackKey];
+      const allVehicles = trackInfo ? Array.from(trackInfo.vehicles || []).sort() : [];
+
+      // Default to first vehicle if none selected
+      const vehicle = selectedVehicle || allVehicles[0] || '';
+      window.__lmu_currentTrackVehicle = vehicle;
+
+      const stats = vehicle
+        ? window.LMUStatsCalculator?.getTrackDetailStats?.(driverName, files, venue, course, vehicle)
+        : null;
+
+      container.innerHTML = window.LMUTrackManager?.generateTrackDetailPage?.(venue, course, stats, allVehicles, vehicle) || '';
+
+      // Attach vehicle selector change handler
+      const sel = container.querySelector('#trackVehicleSelector');
+      if (sel) {
+        sel.addEventListener('change', () => {
+          window.__lmu_currentTrackVehicle = sel.value;
+          handleViewSwitch('trackDetail');
+        });
+      }
     }
 
     function navigateToVehicleDetail(vehicleName, carClass) {
@@ -199,6 +254,13 @@
       try { window.history.pushState({ type: 'vehicle', vehicleName, carClass }, '', '#vehicle'); } catch(_) {}
       switchView('vehicleDetail');
     }
+  }
+
+  function navigateToTrackDetail(venue, course, vehicle) {
+    window.__lmu_currentTrack = { venue, course };
+    window.__lmu_currentTrackVehicle = vehicle || null;
+    try { window.history.pushState({ type: 'track', venue, course }, '', '#track'); } catch(_) {}
+    switchView('trackDetail');
   }
 
   function getCurrentView() {
@@ -246,13 +308,15 @@
       navigateToSettings,
       navigateToHistory,
       navigateToProfile,
-      manualRescan
+      manualRescan,
+      navigateToTrackDetail
     };
 
     // Exposer globalement pour les onclick dans le HTML généré
     window.filterByCarClass = filterByCarClass;
     window.switchView = switchView;
     window.manualRescan = manualRescan;
+    window.navigateToTrackDetail = navigateToTrackDetail;
   }
 
   if (typeof module !== 'undefined' && module.exports) {

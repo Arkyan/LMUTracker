@@ -12,8 +12,8 @@ let lastSession = null; // session extraite du fichier affiché
   const historyState = {
     filesMetaSorted: [], // [{filePath, mtimeMs, mtimeIso}]
     renderedCount: 0,
-    // Demande: 48 par lot
-    pageSize: 48,
+    // Afficher uniquement les 40 plus récents au premier chargement
+    pageSize: 40,
     title: 'Sessions trouvées',
     cacheParams: null,
     filter: 'all', // all | race | qual | practice
@@ -376,7 +376,7 @@ function stopAutoLoadProgress() {
 // Charger automatiquement tous les lots restants
 async function autoLoadAllBatches() {
   const total = historyState.filesMetaSorted.length;
-  const followupBatchSize = 3; // lots plus petits pour fluidifier l'UI
+  const followupBatchSize = 24; // indexation déportée en background : on peut traiter de plus gros lots
   while (historyState.renderedCount < total) {
     const start = historyState.renderedCount;
     const end = Math.min(start + followupBatchSize, total);

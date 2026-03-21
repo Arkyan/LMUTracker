@@ -5,8 +5,33 @@ const { XMLParser } = require('fast-xml-parser');
 const dbManager = require('../modules/databaseManager');
 const { autoUpdater } = require('./updaterSetup');
 const { parseFilesWithWorkerPool } = require('./workerPool');
-const { getCachedParsedIfFresh, setCachedParsed } = require('./sessionsCache');
 const devLog = require('./devLog');
+
+// ── Indexation en arrière-plan ────────────────────────────────────────────
+// L'indexation SQLite est déportée hors du chemin critique IPC pour éviter
+// de bloquer le main process (et donc l'UI) pendant les scans.
+
+const _bgQueue = [];
+let _bgRunning = false;
+
+function scheduleIndex(filePath, stats, parsed) {
+  _bgQueue.push({ filePath, stats, parsed });
+  if (!_bgRunning) {
+    _bgRunning = true;
+    setImmediate(_drainBgQueue);
+  }
+}
+
+function _drainBgQueue() {
+  if (!_bgQueue.length) {
+    _bgRunning = false;
+    return;
+  }
+  // Traiter un lot de 8 fichiers en une seule transaction SQLite
+  const batch = _bgQueue.splice(0, 8);
+  try { dbManager.batchIndexFiles(batch); } catch (_) {}
+  setImmediate(_drainBgQueue);
+}
 
 const parserOptions = {
   ignoreAttributes: false,
@@ -52,25 +77,12 @@ function parseTimeStringToMs(timeString) {
 function isDbDataCompatible(dbData) {
   try {
     const sessions = Array.isArray(dbData?.sessions) ? dbData.sessions : [];
-    const totalDrivers = sessions.reduce((acc, s) => acc + (Array.isArray(s?.drivers) ? s.drivers.length : 0), 0);
-    if (totalDrivers <= 0) return false;
-
-    const hasRace = sessions.some(s => {
-      const name = String(s?.session_name || '').toLowerCase();
-      const type = String(s?.session_type || '').toLowerCase();
-      return type === 'race' || name.includes('race');
-    });
-    if (!hasRace) return true;
-
-    for (const s of sessions) {
-      const name = String(s?.session_name || '').toLowerCase();
-      const type = String(s?.session_type || '').toLowerCase();
-      if (!(type === 'race' || name.includes('race'))) continue;
-      for (const d of (Array.isArray(s?.drivers) ? s.drivers : [])) {
-        if (d && d.class_position != null) return true;
-      }
-    }
-    return false;
+    // Données compatibles si au moins une session est indexée (schéma v4).
+    // La migration v3→v4 vide la table sessions, donc sessions.length === 0
+    // indique une indexation incomplète et force un re-parse.
+    // La présence ou non de drivers est indépendante : un fichier sans pilote
+    // correspondant est quand même correctement indexé.
+    return sessions.length > 0;
   } catch {
     return false;
   }
@@ -101,7 +113,6 @@ function convertDbDataToParsedFormat(dbData) {
       sessionData.Driver = session.drivers.map(driver => {
         const driverData = {
           Name: driver.name,
-          isPlayer: driver.is_player,
           Position: driver.position,
           ClassPosition: driver.class_position,
           FinishStatus: driver.finish_status,
@@ -137,7 +148,7 @@ function convertDbDataToParsedFormat(dbData) {
       });
     }
 
-    if (session.stream) sessionData.Stream = session.stream;
+    if (session.most_laps) sessionData.MostLapsCompleted = session.most_laps;
     raceResults[session.session_name] = sessionData;
   }
 
@@ -180,8 +191,8 @@ async function parseFilesMainThread(filePaths) {
       try {
         const [content, stat] = await Promise.all([fs.readFile(fp, 'utf-8'), fs.stat(fp)]);
         const parsed = parser.parse(content);
-        dbManager.indexFile(fp, stat, parsed);
-        out[i] = { filePath: fp, parsed, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString() };
+        scheduleIndex(fp, stat, parsed);
+        out[i] = { filePath: fp, parsed, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString(), size: stat.size };
       } catch (err) {
         try {
           const stat = await fs.stat(fp);
@@ -251,36 +262,48 @@ function registerIpcHandlers() {
     if (!folderPath) return { canceled: true, error: 'Aucun dossier fourni' };
     try {
       const files = await getAllXmlFiles(folderPath);
-      const metas = [];
 
-      for (const filePath of files) {
-        try {
-          const stat = await fs.stat(filePath);
-          let sessionTimeMs = null;
+      // Une seule requête DB pour tous les fichiers indexés
+      const dbInfoMap = typeof dbManager.getAllFileTimeInfoMap === 'function'
+        ? dbManager.getAllFileTimeInfoMap()
+        : new Map();
 
+      // fs.stat en parallèle (par lots de 64 pour ne pas saturer l'OS)
+      const STAT_CONCURRENCY = 64;
+      const metas = new Array(files.length);
+      let idx = 0;
+      await Promise.all(Array.from({ length: Math.min(STAT_CONCURRENCY, files.length) }, async () => {
+        for (;;) {
+          const i = idx++;
+          if (i >= files.length) break;
+          const filePath = files[i];
           try {
-            const dbCheck = dbManager.isFileIndexed(filePath, stat);
-            if (dbCheck && dbCheck.indexed && typeof dbManager.getFileTimeInfo === 'function') {
-              const info = dbManager.getFileTimeInfo(filePath);
-              if (info?.date_time) sessionTimeMs = parseInt(info.date_time) * 1000;
-              else if (info?.time_string) sessionTimeMs = parseTimeStringToMs(info.time_string);
+            const stat = await fs.stat(filePath);
+            let sessionTimeMs = null;
+            const dbInfo = dbInfoMap.get(filePath);
+            if (dbInfo) {
+              const isFresh = Number(dbInfo.file_size) === stat.size && Number(dbInfo.file_mtime) === Math.floor(stat.mtimeMs);
+              if (isFresh) {
+                if (dbInfo.date_time) sessionTimeMs = parseInt(dbInfo.date_time) * 1000;
+                else if (dbInfo.time_string) sessionTimeMs = parseTimeStringToMs(dbInfo.time_string);
+              }
             }
-          } catch {}
-
-          metas.push({ filePath, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString(), sessionTimeMs });
-        } catch (err) {
-          metas.push({ filePath, error: String(err) });
+            metas[i] = { filePath, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString(), sessionTimeMs };
+          } catch (err) {
+            metas[i] = { filePath, error: String(err) };
+          }
         }
-      }
+      }));
 
-      metas.sort((a, b) => {
+      const validMetas = metas.filter(Boolean);
+      validMetas.sort((a, b) => {
         const aT = a?.sessionTimeMs || 0;
         const bT = b?.sessionTimeMs || 0;
         if (aT !== bT) return bT - aT;
         return (b.mtimeMs || 0) - (a.mtimeMs || 0);
       });
 
-      return { canceled: false, folderPath, count: metas.length, filesMeta: metas };
+      return { canceled: false, folderPath, count: validMetas.length, filesMeta: validMetas };
     } catch (error) {
       return { canceled: true, error: String(error) };
     }
@@ -295,11 +318,24 @@ function registerIpcHandlers() {
       const cached = [];
       const toParse = [];
 
-      for (const fp of filePaths) {
+      // Une seule requête DB pour tous les fichiers du lot
+      const dbInfoMap = typeof dbManager.getAllFileTimeInfoMap === 'function'
+        ? dbManager.getAllFileTimeInfoMap()
+        : new Map();
+
+      // fs.stat en parallèle sur le lot
+      const statResults = await Promise.all(filePaths.map(fp =>
+        fs.stat(fp).then(st => ({ fp, st })).catch(() => ({ fp, st: null }))
+      ));
+
+      for (const { fp, st } of statResults) {
+        if (!st) { toParse.push(fp); continue; }
         try {
-          const st = await fs.stat(fp);
-          const dbCheck = dbManager.isFileIndexed(fp, st);
-          if (dbCheck.indexed) {
+          const dbInfo = dbInfoMap.get(fp);
+          const isFresh = dbInfo &&
+            Number(dbInfo.file_size) === st.size &&
+            Number(dbInfo.file_mtime) === Math.floor(st.mtimeMs);
+          if (isFresh) {
             const dbData = dbManager.getFileData(fp);
             if (dbData && isDbDataCompatible(dbData)) {
               const parsed = convertDbDataToParsedFormat(dbData);
@@ -324,13 +360,11 @@ function registerIpcHandlers() {
       if (toParse.length > 0) {
         parsedResults = await parseFilesWithWorkerPool(toParse);
 
+        // Indexation en arrière-plan : ne bloque PAS le main process ni la réponse IPC.
+        // Le worker inclut déjà mtimeMs et size — pas besoin de fs.stat supplémentaire.
         for (const r of parsedResults) {
           if (r?.filePath && r?.parsed && typeof r.mtimeMs === 'number') {
-            try {
-              const st = await fs.stat(r.filePath);
-              dbManager.indexFile(r.filePath, st, r.parsed);
-              await setCachedParsed(r.filePath, r.mtimeMs, st.size, r.parsed);
-            } catch {}
+            scheduleIndex(r.filePath, { size: r.size ?? 0, mtimeMs: r.mtimeMs }, r.parsed);
           }
         }
 
@@ -365,12 +399,8 @@ function registerIpcHandlers() {
   ipcMain.handle('open-lmu-file-by-path', async (_event, filePath) => {
     if (!filePath) return { canceled: true, error: 'Aucun chemin fourni' };
     try {
-      const stat = await fs.stat(filePath);
-      const hit = await getCachedParsedIfFresh(filePath, stat.mtimeMs, stat.size);
-      if (hit) return { canceled: false, ...hit };
-      const content = await fs.readFile(filePath, 'utf-8');
+      const [content, stat] = await Promise.all([fs.readFile(filePath, 'utf-8'), fs.stat(filePath)]);
       const parsed = new XMLParser(parserOptions).parse(content);
-      await setCachedParsed(filePath, stat.mtimeMs, stat.size, parsed);
       return { canceled: false, filePath, parsed, mtimeMs: stat.mtimeMs, mtimeIso: stat.mtime.toISOString() };
     } catch (error) {
       return { canceled: true, error: String(error), filePath };
@@ -384,6 +414,8 @@ function registerIpcHandlers() {
       history: 'history.html',
       vehicles: 'vehicles.html',
       'vehicle-detail': 'vehicle-detail.html',
+      tracks: 'tracks.html',
+      'track-detail': 'track-detail.html',
       settings: 'settings.html'
     };
     const fileName = viewMap[String(viewName || '')];
