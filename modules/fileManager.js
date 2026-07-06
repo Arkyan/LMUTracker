@@ -306,7 +306,7 @@ function renderHistorySkeleton(container, title) {
         <div id="historyProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--purple));transition:width .2s ease;"></div>
       </div>
     </div>
-    <div id="historyGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>
+    <div id="historyGrid" class="row-list"></div>
     <div id="historyLoadMore" style="margin-top:16px;text-align:center;">
       <button class="btn" id="btnLoadMoreHistory" onclick="loadMoreHistory()">Charger plus</button>
     </div>
@@ -549,7 +549,7 @@ function appendHistoryCards(files) {
       }
     }
   } catch (_) {}
-  const cards = files.map(file => window.LMURenderEngine ? window.LMURenderEngine.generateSessionCard(file) : '').join('');
+  const cards = files.map(file => window.LMURenderEngine ? window.LMURenderEngine.generateSessionRow(file) : '').join('');
   const temp = document.createElement('div');
   temp.innerHTML = cards;
   Array.from(temp.children).forEach(child => grid.appendChild(child));
@@ -690,11 +690,10 @@ async function renderSessionInPlace(absFilePath) {
   const container = document.getElementById('results');
   if (!container) return;
   
-    container.innerHTML = `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
-      <button class="btn" id="btnBackToHistory">Retour</button>
-      <span class="muted" style="font-size:12px;word-break:break-all;">${absFilePath}</span>
+    container.innerHTML = `<div style="margin-bottom:12px;">
+      <button class="btn" id="btnBackToHistory"><i class="fas fa-arrow-left"></i> Retour</button>
     </div>
-    <div id="sessionView" class="card"><span class="spinner"></span> Chargement de la session…</div>`;
+    <div id="sessionView"><span class="spinner"></span> Chargement de la session…</div>`;
   
   const btn = container.querySelector('#btnBackToHistory');
   if (btn) btn.addEventListener('click', (e) => {

@@ -5,16 +5,21 @@
 
 (function() {
   // Version UI pour invalider le cache du profil quand la structure change
-  const UI_PROFILE_VERSION = 5;
+  const UI_PROFILE_VERSION = 6;
+  // Dernières stats calculées, conservées pour ré-instancier le graphique
+  // même quand le HTML provient du cache (le HTML seul ne suffit pas à
+  // redessiner un <canvas>).
+  let lastComputedStats = null;
+
   // Générer le contenu complet du profil pilote
   function generateProfileContent() {
   const container = document.getElementById('profileContent');
   if (!container) return;
-  
+
   const driverName = window.LMUStorage ? window.LMUStorage.getConfiguredDriverName() : '';
   const lastScannedFiles = window.LMUFileManager ? window.LMUFileManager.getLastScannedFiles() : null;
   const selectedCarClass = window.LMUNavigation ? window.LMUNavigation.getSelectedCarClass() : 'Hyper';
-  
+
   // Paramètres pour le cache
   const cacheParams = {
     driverName,
@@ -22,16 +27,17 @@
     selectedCarClass,
     uiVersion: UI_PROFILE_VERSION
   };
-  
+
   // Vérifier le cache d'abord
   if (window.LMUCacheManager) {
     const cachedContent = window.LMUCacheManager.getCachedContent('profile', cacheParams);
     if (cachedContent) {
       container.innerHTML = cachedContent;
+      renderPositionEvolutionChart(lastComputedStats);
       return;
     }
   }
-  
+
   if (!driverName) {
     const emptyContent = generateEmptyProfileContent();
     container.innerHTML = emptyContent;
@@ -40,30 +46,111 @@
   }
 
   // Calculer les statistiques depuis les sessions scannées (avec cache)
-  const stats = window.LMUStatsCalculator ? 
+  const stats = window.LMUStatsCalculator ?
     window.LMUStatsCalculator.getCachedDriverStats(driverName, lastScannedFiles) : null;
-  const trackStats = window.LMUStatsCalculator ? 
+  const trackStats = window.LMUStatsCalculator ?
     window.LMUStatsCalculator.getCachedTrackStats(driverName, lastScannedFiles, selectedCarClass) : {};
   const vehicleStatsByClass = window.LMUStatsCalculator ?
     window.LMUStatsCalculator.getCachedVehicleStatsByClass(driverName, lastScannedFiles) : {};
-  
+
   // Vérifier si on a des données
   if (!stats || !lastScannedFiles || lastScannedFiles.length === 0) {
     const noDataContent = generateNoDataContent();
     container.innerHTML = noDataContent;
     return;
   }
-  
+
+  lastComputedStats = stats;
+
   let html = generateWelcomeSection(driverName, stats);
-  // Section Performance par Circuit retirée
-  html += generateRecentSessionsSection(stats);
-  
+  html += `<div class="profile-grid">${generatePositionEvolutionPanel(stats)}${generateRecentSessionsSection(stats)}</div>`;
+
   container.innerHTML = html;
-  
+  renderPositionEvolutionChart(stats);
+
   // Mettre en cache le contenu généré
   if (window.LMUCacheManager) {
     window.LMUCacheManager.setCachedContent('profile', html, cacheParams);
   }
+}
+
+// Panneau conteneur du graphique d'évolution du classement (canvas rempli
+// après injection du HTML, voir renderPositionEvolutionChart)
+function generatePositionEvolutionPanel(stats) {
+  return `
+    <div class="card">
+      <h3 style="margin:0 0 16px 0;color:var(--accent);"><i class="fas fa-chart-line"></i> Évolution du classement</h3>
+      <div style="position:relative;height:280px;">
+        <canvas id="chart-position-evolution"></canvas>
+      </div>
+    </div>
+  `;
+}
+
+// Instancie le graphique Chart.js à partir de stats.recentSessions
+// (position + date déjà disponibles, aucun nouveau calcul nécessaire)
+function renderPositionEvolutionChart(stats) {
+  if (!window.LMUCharts || !stats || !Array.isArray(stats.recentSessions)) return;
+
+  const entries = stats.recentSessions
+    .filter(s => Number.isFinite(s.position) && s.position > 0)
+    .slice(0, 30)
+    .slice()
+    .reverse(); // chronologique (le plus ancien à gauche)
+
+  if (entries.length === 0) return;
+
+  const colors = window.LMUCharts.themeColors();
+  const labels = entries.map(s => (s.date || '').split(' à ')[0]);
+  const positions = entries.map(s => s.position);
+  const maxPosition = Math.max(...positions);
+
+  window.LMUCharts.renderChart('chart-position-evolution', {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Position',
+        data: positions,
+        borderColor: colors.accent,
+        backgroundColor: colors.accent,
+        pointBackgroundColor: colors.accent,
+        pointRadius: 3,
+        tension: 0.25,
+        fill: false
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          reverse: true,
+          min: 1,
+          max: Math.max(maxPosition, 3),
+          ticks: { stepSize: 1, color: colors.textSecondary },
+          grid: { color: colors.border },
+          title: { display: true, text: 'Position', color: colors.textSecondary }
+        },
+        x: {
+          ticks: { color: colors.textSecondary, maxRotation: 0, autoSkip: true },
+          grid: { display: false }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => entries[items[0].dataIndex].event,
+            label: (item) => {
+              const s = entries[item.dataIndex];
+              return [`Position: P${s.position}`, `${s.track} · ${s.date}`];
+            }
+          }
+        }
+      }
+    }
+  });
 }
 
 // Générer le contenu pour un profil vide (pas de pilote configuré)
@@ -95,47 +182,28 @@ function generateWelcomeSection(driverName, stats) {
   if (!stats) return '';
   
   return `
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;margin-bottom:24px;">
-      <!-- Carte de bienvenue -->
-      <div class="card" style="background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(167,139,250,0.1));border:1px solid var(--border);">
-        <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
-          <div style="width:64px;height:64px;background:linear-gradient(135deg,var(--accent),var(--purple));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;"><i class="fas fa-flag-checkered"></i></div>
-          <div>
-            <h2 style="margin:0;font-size:24px;color:var(--text);">Bonjour, ${driverName} !</h2>
-            <p style="margin:4px 0 0 0;color:var(--muted);">Bienvenue dans votre tableau de bord Le Mans Ultimate</p>
-          </div>
-        </div>
-        ${stats.totalSessions > 0 ? `
-          <div class="row" style="gap:16px;flex-wrap:wrap;">
-            <div class="chip" style="background:var(--ok);color:#000;font-weight:600;"><i class="fas fa-trophy"></i> ${stats.totalRaces} course(s)</div>
-            <div class="chip" style="background:var(--accent);color:#fff;font-weight:600;"><i class="fas fa-running"></i> ${stats.totalSessions} session(s)</div>
-            <div class="chip" style="background:#fbbf24;color:#000;font-weight:600;"><i class="fas fa-medal"></i> ${stats.totalWins} victoire(s)</div>
-            <div class="chip" style="background:#a855f7;color:#fff;font-weight:600;"><i class="fas fa-award"></i> ${stats.totalPodiums} podium(s)</div>
-          </div>
-        ` : ''}
+    <div style="margin-bottom:16px;">
+      <h2 style="margin:0 0 4px 0;font-size:19px;font-weight:700;color:var(--text-primary);">
+        <i class="fas fa-flag-checkered" style="color:var(--accent);margin-right:8px;"></i>Bonjour, ${driverName}
+      </h2>
+      <p class="muted" style="margin:0;">Tableau de bord Le Mans Ultimate</p>
+    </div>
+    <div class="dashboard-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:20px;">
+      <div class="stat-tile">
+        <div class="stat-tile__label">Sessions</div>
+        <div class="stat-tile__value">${stats.totalSessions}</div>
       </div>
-      
-      <!-- Statistiques rapides -->
-      <div class="card">
-        <h3 style="margin:0 0 16px 0;color:var(--accent);"><i class="fas fa-chart-bar"></i> Statistiques</h3>
-        <div style="display:grid;gap:12px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:var(--muted);">Sessions totales</span>
-            <strong style="color:var(--text);">${stats.totalSessions}</strong>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:var(--muted);">Courses</span>
-            <strong style="color:var(--text);">${stats.totalRaces}</strong>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:var(--muted);">Victoires totales</span>
-            <strong style="color:#fbbf24;">${stats.totalWins}</strong>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:var(--muted);">Podiums totaux</span>
-            <strong style="color:#a855f7;">${stats.totalPodiums}</strong>
-          </div>
-        </div>
+      <div class="stat-tile">
+        <div class="stat-tile__label">Courses</div>
+        <div class="stat-tile__value stat-tile__value--accent">${stats.totalRaces}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile__label">Victoires</div>
+        <div class="stat-tile__value stat-tile__value--gold">${stats.totalWins}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-tile__label">Podiums</div>
+        <div class="stat-tile__value stat-tile__value--purple">${stats.totalPodiums}</div>
       </div>
     </div>
   `;
@@ -197,9 +265,7 @@ function generateRecentSessionsSection(stats) {
     return `
       <div class="card">
         <h3 style="margin:0 0 16px 0;color:var(--accent);"><i class="fas fa-calendar-alt"></i> Sessions récentes</h3>
-        <div style="display:grid;gap:12px;">
-          ${recentSessionCards}
-        </div>
+        ${recentSessionCards}
         ${stats.recentSessions.length > 5 ? `
           <div style="margin-top:16px;text-align:center;">
             <button class="btn" onclick="switchView('history')"><i class="fas fa-chart-line"></i> Voir tout l'historique</button>
@@ -296,29 +362,24 @@ function generateVehicleCardsPage(vehicleStatsByClass) {
       const circuitsText = `${v.circuits ?? 0}`;
 
       return `
-        <div class="vehicle-card" data-vehicle="${v.vehicleName}" data-class="${cls}" role="button" tabindex="0">
-          <div class="vehicle-card__top">
-            <div class="vehicle-card__icon"><i class="fas fa-car-side"></i></div>
-            <div class="vehicle-card__meta">
-              <div class="vehicle-card__title">${v.vehicleName}</div>
-            </div>
-            <div class="vehicle-card__cta">Détails <i class="fas fa-arrow-right"></i></div>
+        <div class="data-row" data-vehicle="${v.vehicleName}" data-class="${cls}" role="button" tabindex="0">
+          <span class="data-row__icon"><i class="fas fa-car-side"></i></span>
+          <div class="data-row__primary">
+            <div class="data-row__title">${v.vehicleName}</div>
           </div>
-
-          <div class="vehicle-kpis">
-            <div class="vehicle-kpi">
-              <div class="vehicle-kpi__label">Sessions</div>
-              <div class="vehicle-kpi__value">${sessionsText}</div>
-            </div>
-            <div class="vehicle-kpi">
-              <div class="vehicle-kpi__label">Tours</div>
-              <div class="vehicle-kpi__value">${lapsText}</div>
-            </div>
-            <div class="vehicle-kpi">
-              <div class="vehicle-kpi__label">Circuits</div>
-              <div class="vehicle-kpi__value">${circuitsText}</div>
-            </div>
+          <div class="data-row__col">
+            <span class="data-row__col-label">Sessions</span>
+            <span class="data-row__col-value">${sessionsText}</span>
           </div>
+          <div class="data-row__col">
+            <span class="data-row__col-label">Tours</span>
+            <span class="data-row__col-value">${lapsText}</span>
+          </div>
+          <div class="data-row__col">
+            <span class="data-row__col-label">Circuits</span>
+            <span class="data-row__col-value">${circuitsText}</span>
+          </div>
+          <span class="data-row__chevron"><i class="fas fa-chevron-right"></i></span>
         </div>
       `;
     }).join('');
@@ -328,7 +389,7 @@ function generateVehicleCardsPage(vehicleStatsByClass) {
           <div class="vehicle-class-title" style="color:${classDetails.color};">${classDetails.icon} ${cls}</div>
           <div class="muted" style="font-size:12px;">${vehicles.length} voiture${vehicles.length > 1 ? 's' : ''}</div>
         </div>
-        <div class="vehicle-grid">
+        <div class="row-list">
           ${cards}
         </div>
       </div>
@@ -402,8 +463,20 @@ function generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStat
       <td style="text-align:center;">${isFinite(t.topSpeed) && t.topSpeed > 0 ? `${Math.round(t.topSpeed)} km/h` : '—'}</td>
     </tr>
   `).join('');
+
+  const hasBestLaps = entries.some(t => isFinite(t.bestLap) && t.bestLap > 0);
+
   return `
     ${header}
+    ${hasBestLaps ? `
+    <div class="card" style="margin-bottom:16px;">
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px;">
+        <i class="fas fa-chart-bar" style="color:var(--accent);margin-right:8px;"></i>Meilleur tour par circuit
+      </div>
+      <div style="position:relative;height:${Math.max(120, entries.length * 36)}px;">
+        <canvas id="chart-vehicle-best-lap-by-track"></canvas>
+      </div>
+    </div>` : ''}
     <div class="card" style="overflow:auto;">
       <table class="table centered" style="width:100%;">
         <thead>
@@ -422,6 +495,50 @@ function generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStat
       </table>
     </div>
   `;
+}
+
+// Instancie le bar chart horizontal "meilleur tour par circuit" (véhicule)
+function renderVehicleTrackChart(trackStats) {
+  if (!window.LMUCharts) return;
+  const entries = Object.values(trackStats || {}).filter(t => isFinite(t.bestLap) && t.bestLap > 0);
+  if (entries.length === 0) return;
+
+  const { fmtTime } = window.LMUUtils || {};
+  entries.sort((a, b) => b.sessions - a.sessions);
+  const colors = window.LMUCharts.themeColors();
+
+  window.LMUCharts.renderChart('chart-vehicle-best-lap-by-track', {
+    type: 'bar',
+    data: {
+      labels: entries.map(t => t.trackName),
+      datasets: [{
+        label: 'Meilleur tour',
+        data: entries.map(t => t.bestLap),
+        backgroundColor: colors.accent
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          ticks: { color: colors.textSecondary, callback: (v) => fmtTime ? fmtTime(v) : v },
+          grid: { color: colors.border }
+        },
+        y: {
+          ticks: { color: colors.textSecondary },
+          grid: { display: false }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: (item) => fmtTime ? fmtTime(item.raw) : item.raw }
+        }
+      }
+    }
+  });
 }
 
 // Actualiser le profil (pour être appelé depuis d'autres modules)
@@ -445,6 +562,7 @@ if (typeof window !== 'undefined') {
     generateCarClassPerformanceSection,
     generateVehicleCardsPage,
     generateVehicleTrackPerformanceSection,
+    renderVehicleTrackChart,
     generateRecentSessionsSection,
     refreshProfile,
     canGenerateProfile

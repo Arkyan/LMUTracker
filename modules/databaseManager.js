@@ -11,7 +11,63 @@
   const { app } = require('electron');
 
   let db = null;
+  let stmts = null;
   const DB_VERSION = 4;
+
+  // Requêtes fixes préparées une seule fois à l'ouverture de la BDD (évite de
+  // recompiler le SQL à chaque appel). Les requêtes IN (...) à arité variable
+  // (getFileDataBatch) restent préparées dynamiquement par appel.
+  function prepareStatements() {
+    stmts = {
+      getFileIndexInfoByPath: db.prepare('SELECT id, file_hash, file_size, file_mtime FROM file_metadata WHERE file_path = ?'),
+      updateFileHash: db.prepare('UPDATE file_metadata SET file_hash = ? WHERE id = ?'),
+      upsertFileMetadata: db.prepare(`
+        INSERT INTO file_metadata (
+          file_path, file_hash, file_size, file_mtime, indexed_at,
+          game_version, track_venue, track_course, track_event, track_length,
+          date_time, time_string
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(file_path) DO UPDATE SET
+          file_hash    = excluded.file_hash,
+          file_size    = excluded.file_size,
+          file_mtime   = excluded.file_mtime,
+          indexed_at   = excluded.indexed_at,
+          game_version = excluded.game_version,
+          track_venue  = excluded.track_venue,
+          track_course = excluded.track_course,
+          track_event  = excluded.track_event,
+          track_length = excluded.track_length,
+          date_time    = excluded.date_time,
+          time_string  = excluded.time_string
+      `),
+      getFileIdByPath: db.prepare('SELECT id FROM file_metadata WHERE file_path = ?'),
+      deleteSessionsByFileId: db.prepare('DELETE FROM sessions WHERE file_id = ?'),
+      insertSession: db.prepare(`
+        INSERT INTO sessions (file_id, session_name, session_type, date_time, time_string, laps, minutes, most_laps)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `),
+      insertDriver: db.prepare(`
+        INSERT INTO drivers (
+          session_id, name, position, class_position, finish_status, laps,
+          best_lap_time, best_lap_num, vehicle_name, veh_name, vehicle_class,
+          vehicle_number, team_name, swaps_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `),
+      insertLap: db.prepare(`
+        INSERT INTO laps (driver_id, lap_num, lap_time, sector1, sector2, sector3, fuel_used)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `),
+      getAllFileMetadata: db.prepare('SELECT * FROM file_metadata ORDER BY date_time DESC'),
+      getFileTimeInfo: db.prepare('SELECT date_time, time_string FROM file_metadata WHERE file_path = ?'),
+      getAllFileTimeInfoMap: db.prepare('SELECT file_path, date_time, time_string, file_size, file_mtime FROM file_metadata'),
+      getAllFileIdsAndPaths: db.prepare('SELECT id, file_path FROM file_metadata'),
+      deleteFileById: db.prepare('DELETE FROM file_metadata WHERE id = ?'),
+      countFiles: db.prepare('SELECT COUNT(*) as c FROM file_metadata'),
+      countSessions: db.prepare('SELECT COUNT(*) as c FROM sessions'),
+      countDrivers: db.prepare('SELECT COUNT(*) as c FROM drivers'),
+      countLaps: db.prepare('SELECT COUNT(*) as c FROM laps')
+    };
+  }
 
   function arrayify(val) {
     if (val == null) return [];
@@ -84,6 +140,7 @@
       db.pragma('journal_mode = WAL');
       createTables();
       migrateDatabase();
+      prepareStatements();
       return { ok: true };
     } catch (error) {
       console.error('[DB] Erreur init:', error);
@@ -225,7 +282,7 @@
       const size     = stats?.size != null ? stats.size : null;
       const mtimeKey = stats?.mtimeMs != null ? Math.floor(stats.mtimeMs) : null;
 
-      const row = db.prepare('SELECT id, file_hash, file_size, file_mtime FROM file_metadata WHERE file_path = ?').get(filePath);
+      const row = stmts.getFileIndexInfoByPath.get(filePath);
       if (!row) return { indexed: false };
 
       if (size == null || mtimeKey == null) {
@@ -247,7 +304,7 @@
       // Normaliser le hash si besoin
       const expected = calculateFileHashFromParts(filePath, size, mtimeKey);
       if (row.file_hash !== expected) {
-        try { db.prepare('UPDATE file_metadata SET file_hash = ? WHERE id = ?').run(expected, row.id); } catch (_) {}
+        try { stmts.updateFileHash.run(expected, row.id); } catch (_) {}
       }
 
       return { indexed: true, fileId: row.id };
@@ -272,25 +329,7 @@
       );
 
       const tx = db.transaction(() => {
-        db.prepare(`
-          INSERT INTO file_metadata (
-            file_path, file_hash, file_size, file_mtime, indexed_at,
-            game_version, track_venue, track_course, track_event, track_length,
-            date_time, time_string
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(file_path) DO UPDATE SET
-            file_hash    = excluded.file_hash,
-            file_size    = excluded.file_size,
-            file_mtime   = excluded.file_mtime,
-            indexed_at   = excluded.indexed_at,
-            game_version = excluded.game_version,
-            track_venue  = excluded.track_venue,
-            track_course = excluded.track_course,
-            track_event  = excluded.track_event,
-            track_length = excluded.track_length,
-            date_time    = excluded.date_time,
-            time_string  = excluded.time_string
-        `).run(
+        stmts.upsertFileMetadata.run(
           filePath, fileHash,
           stats.size, Math.floor(stats.mtimeMs), Date.now(),
           raceResults.GameVersion  || null,
@@ -302,11 +341,11 @@
           raceResults.TimeString   || null
         );
 
-        const fileRow = db.prepare('SELECT id FROM file_metadata WHERE file_path = ?').get(filePath);
+        const fileRow = stmts.getFileIdByPath.get(filePath);
         if (!fileRow?.id) throw new Error('Impossible de récupérer file_id');
         const fileId = fileRow.id;
 
-        db.prepare('DELETE FROM sessions WHERE file_id = ?').run(fileId);
+        stmts.deleteSessionsByFileId.run(fileId);
         indexSessions(fileId, raceResults);
         return fileId;
       });
@@ -338,10 +377,7 @@
         const sessionType = getSessionType(sessionKey);
         const mostLaps = sessionData.MostLapsCompleted ? parseInt(sessionData.MostLapsCompleted) : null;
 
-        const sessionInfo = db.prepare(`
-          INSERT INTO sessions (file_id, session_name, session_type, date_time, time_string, laps, minutes, most_laps)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
+        const sessionInfo = stmts.insertSession.run(
           fileId, sessionKey, sessionType,
           sessionData.DateTime ? parseInt(sessionData.DateTime) : null,
           sessionData.TimeString || null,
@@ -391,13 +427,7 @@
           } catch (_) { return null; }
         })();
 
-        const driverInfo = db.prepare(`
-          INSERT INTO drivers (
-            session_id, name, position, class_position, finish_status, laps,
-            best_lap_time, best_lap_num, vehicle_name, veh_name, vehicle_class,
-            vehicle_number, team_name, swaps_json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
+        const driverInfo = stmts.insertDriver.run(
           sessionId,
           driver.Name        || null,
           driver.Position    ? parseInt(driver.Position)    : null,
@@ -423,6 +453,9 @@
     }
   }
 
+  // Appelée uniquement depuis indexPlayerDriver <- indexSessions <- indexFile/_indexFileSingle,
+  // qui wrappent toujours l'appel dans un db.transaction() : pas de transaction locale ici,
+  // les inserts rejoignent la transaction du chemin appelant (nesting no-op de better-sqlite3).
   function indexLaps(driverId, lapsData) {
     for (const lap of arrayify(lapsData)) {
       if (!lap || typeof lap !== 'object') continue;
@@ -441,10 +474,7 @@
         const s3 = lap.s3 !== undefined ? parseFloat(lap.s3) : lap['@_s3'] !== undefined ? parseFloat(lap['@_s3']) : null;
         const fuel = lap.fuel !== undefined ? parseFloat(lap.fuel) : lap['@_fuel'] !== undefined ? parseFloat(lap['@_fuel']) : null;
 
-        db.prepare(`
-          INSERT INTO laps (driver_id, lap_num, lap_time, sector1, sector2, sector3, fuel_used)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(driverId, lapNum, lapTime, s1, s2, s3, fuel);
+        stmts.insertLap.run(driverId, lapNum, lapTime, s1, s2, s3, fuel);
       } catch (error) {
         console.error('[DB] indexLaps:', error);
       }
@@ -474,38 +504,104 @@
     return 'unknown';
   }
 
-  function getFileData(filePath) {
-    if (!db) return null;
+  // Découpe une liste en morceaux d'au plus `size` éléments (limite SQLite de
+  // 999 variables liées par requête - les lots actuels de 24/40 sont bien en
+  // dessous, mais on reste protégé si la taille de lot change un jour).
+  function chunk(arr, size) {
+    const out = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  }
+
+  // Récupère les données complètes (metadata + sessions + drivers + laps) pour
+  // tout un lot de fichiers en 4 requêtes IN (...) au total, au lieu d'une
+  // cascade de requêtes par fichier/session/driver. Retourne une Map filePath -> data
+  // avec exactement la même forme que l'ancienne getFileData(filePath) par fichier.
+  function getFileDataBatch(filePaths) {
+    const result = new Map();
+    if (!db || !Array.isArray(filePaths) || filePaths.length === 0) return result;
+
     try {
-      const fileRow = db.prepare('SELECT * FROM file_metadata WHERE file_path = ?').get(filePath);
-      if (!fileRow) return null;
+      const fileRows = [];
+      for (const part of chunk(filePaths, 500)) {
+        const placeholders = part.map(() => '?').join(',');
+        fileRows.push(...db.prepare(`SELECT * FROM file_metadata WHERE file_path IN (${placeholders})`).all(...part));
+      }
+      if (!fileRows.length) return result;
 
-      const sessions = db.prepare('SELECT * FROM sessions WHERE file_id = ?').all(fileRow.id);
-      const result = { metadata: fileRow, sessions: [] };
+      const fileIdToRow = new Map(fileRows.map(r => [r.id, r]));
+      const fileIds = fileRows.map(r => r.id);
 
-      for (const session of sessions) {
-        const drivers = db.prepare('SELECT * FROM drivers WHERE session_id = ?').all(session.id);
-        const sessionData = { ...session, drivers: [] };
+      const sessionRows = [];
+      for (const part of chunk(fileIds, 500)) {
+        const placeholders = part.map(() => '?').join(',');
+        sessionRows.push(...db.prepare(`SELECT * FROM sessions WHERE file_id IN (${placeholders})`).all(...part));
+      }
+      const sessionsByFileId = new Map();
+      for (const s of sessionRows) {
+        if (!sessionsByFileId.has(s.file_id)) sessionsByFileId.set(s.file_id, []);
+        sessionsByFileId.get(s.file_id).push({ ...s, drivers: [] });
+      }
+      const sessionIds = sessionRows.map(s => s.id);
 
+      const driverRows = [];
+      for (const part of chunk(sessionIds, 500)) {
+        const placeholders = part.map(() => '?').join(',');
+        driverRows.push(...db.prepare(`SELECT * FROM drivers WHERE session_id IN (${placeholders})`).all(...part));
+      }
+      const driversBySessionId = new Map();
+      for (const d of driverRows) {
+        if (!driversBySessionId.has(d.session_id)) driversBySessionId.set(d.session_id, []);
+        driversBySessionId.get(d.session_id).push({ ...d, laps: [] });
+      }
+      const driverIds = driverRows.map(d => d.id);
+
+      const lapRows = [];
+      for (const part of chunk(driverIds, 500)) {
+        const placeholders = part.map(() => '?').join(',');
+        lapRows.push(...db.prepare(`SELECT * FROM laps WHERE driver_id IN (${placeholders})`).all(...part));
+      }
+      const lapsByDriverId = new Map();
+      for (const l of lapRows) {
+        if (!lapsByDriverId.has(l.driver_id)) lapsByDriverId.set(l.driver_id, []);
+        lapsByDriverId.get(l.driver_id).push(l);
+      }
+
+      // Assemblage : driver.laps, puis session.drivers, puis file.sessions
+      for (const drivers of driversBySessionId.values()) {
         for (const driver of drivers) {
-          const laps = db.prepare('SELECT * FROM laps WHERE driver_id = ?').all(driver.id);
-          sessionData.drivers.push({ ...driver, laps });
+          driver.laps = lapsByDriverId.get(driver.id) || [];
         }
+      }
+      for (const sessions of sessionsByFileId.values()) {
+        for (const session of sessions) {
+          session.drivers = driversBySessionId.get(session.id) || [];
+        }
+      }
 
-        result.sessions.push(sessionData);
+      for (const fileRow of fileRows) {
+        result.set(fileRow.file_path, {
+          metadata: fileRow,
+          sessions: sessionsByFileId.get(fileRow.id) || []
+        });
       }
 
       return result;
     } catch (error) {
-      console.error('[DB] getFileData:', error);
-      return null;
+      console.error('[DB] getFileDataBatch:', error);
+      return result;
     }
+  }
+
+  function getFileData(filePath) {
+    if (!db) return null;
+    return getFileDataBatch([filePath]).get(filePath) || null;
   }
 
   function getAllFileMetadata() {
     if (!db) return [];
     try {
-      return db.prepare('SELECT * FROM file_metadata ORDER BY date_time DESC').all();
+      return stmts.getAllFileMetadata.all();
     } catch (error) {
       console.error('[DB] getAllFileMetadata:', error);
       return [];
@@ -515,7 +611,7 @@
   function getFileTimeInfo(filePath) {
     if (!db) return null;
     try {
-      return db.prepare('SELECT date_time, time_string FROM file_metadata WHERE file_path = ?').get(filePath);
+      return stmts.getFileTimeInfo.get(filePath);
     } catch (error) {
       console.error('[DB] getFileTimeInfo:', error);
       return null;
@@ -526,7 +622,7 @@
   function getAllFileTimeInfoMap() {
     if (!db) return new Map();
     try {
-      const rows = db.prepare('SELECT file_path, date_time, time_string, file_size, file_mtime FROM file_metadata').all();
+      const rows = stmts.getAllFileTimeInfoMap.all();
       return new Map(rows.map(r => [r.file_path, r]));
     } catch (error) {
       console.error('[DB] getAllFileTimeInfoMap:', error);
@@ -539,11 +635,11 @@
   function cleanupMissingFiles() {
     if (!db) return { ok: false, error: 'Base de données non initialisée' };
     try {
-      const allFiles = db.prepare('SELECT id, file_path FROM file_metadata').all();
+      const allFiles = stmts.getAllFileIdsAndPaths.all();
       let deleted = 0;
       for (const file of allFiles) {
         if (!fs.existsSync(file.file_path)) {
-          db.prepare('DELETE FROM file_metadata WHERE id = ?').run(file.id);
+          stmts.deleteFileById.run(file.id);
           deleted++;
         }
       }
@@ -565,10 +661,10 @@
     if (!db) return null;
     try {
       const stats = {
-        files:    db.prepare('SELECT COUNT(*) as c FROM file_metadata').get().c,
-        sessions: db.prepare('SELECT COUNT(*) as c FROM sessions').get().c,
-        drivers:  db.prepare('SELECT COUNT(*) as c FROM drivers').get().c,
-        laps:     db.prepare('SELECT COUNT(*) as c FROM laps').get().c,
+        files:    stmts.countFiles.get().c,
+        sessions: stmts.countSessions.get().c,
+        drivers:  stmts.countDrivers.get().c,
+        laps:     stmts.countLaps.get().c,
         dbSize:   0
       };
       const dbPath = path.join(app.getPath('userData'), 'lmutracker.db');
@@ -601,25 +697,7 @@
 
     const fileHash = calculateFileHashFromParts(filePath, stats.size, Math.floor(stats.mtimeMs));
 
-    db.prepare(`
-      INSERT INTO file_metadata (
-        file_path, file_hash, file_size, file_mtime, indexed_at,
-        game_version, track_venue, track_course, track_event, track_length,
-        date_time, time_string
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(file_path) DO UPDATE SET
-        file_hash    = excluded.file_hash,
-        file_size    = excluded.file_size,
-        file_mtime   = excluded.file_mtime,
-        indexed_at   = excluded.indexed_at,
-        game_version = excluded.game_version,
-        track_venue  = excluded.track_venue,
-        track_course = excluded.track_course,
-        track_event  = excluded.track_event,
-        track_length = excluded.track_length,
-        date_time    = excluded.date_time,
-        time_string  = excluded.time_string
-    `).run(
+    stmts.upsertFileMetadata.run(
       filePath, fileHash,
       stats.size, Math.floor(stats.mtimeMs), Date.now(),
       raceResults.GameVersion  || null,
@@ -631,11 +709,11 @@
       raceResults.TimeString   || null
     );
 
-    const fileRow = db.prepare('SELECT id FROM file_metadata WHERE file_path = ?').get(filePath);
+    const fileRow = stmts.getFileIdByPath.get(filePath);
     if (!fileRow?.id) return;
     const fileId = fileRow.id;
 
-    db.prepare('DELETE FROM sessions WHERE file_id = ?').run(fileId);
+    stmts.deleteSessionsByFileId.run(fileId);
     indexSessions(fileId, raceResults);
   }
 
@@ -668,6 +746,7 @@
     indexFile,
     batchIndexFiles,
     getFileData,
+    getFileDataBatch,
     getAllFileMetadata,
     getFileTimeInfo,
     getAllFileTimeInfoMap,

@@ -20,6 +20,7 @@ let loadTypeRaceCheckbox = null;
 let loadTypeQualCheckbox = null;
 let loadTypePracticeCheckbox = null;
 let btnSaveSettings = null;
+let themeToggleCheckbox = null;
 
 // Cache en mémoire des paramètres persistés
 let persistedSettings = {
@@ -27,7 +28,8 @@ let persistedSettings = {
   driverName: '',
   selectedCarClass: 'Hyper',
   loadAllSessionsDirectly: false,
-  loadTypes: { race: true, qual: true, practice: true }
+  loadTypes: { race: true, qual: true, practice: true },
+  theme: 'dark'
 };
 
 // Utilitaires: lire/écrire via l'API preload (IPC)
@@ -62,15 +64,32 @@ async function initStorage() {
   loadTypeRaceCheckbox = document.getElementById('loadTypeRace');
   loadTypeQualCheckbox = document.getElementById('loadTypeQual');
   loadTypePracticeCheckbox = document.getElementById('loadTypePractice');
-  
+  themeToggleCheckbox = document.getElementById('themeToggle');
+
   // Charger les valeurs sauvegardées (persistées JSON)
   await ensureSettingsLoaded();
   applySettingsToUI();
-  
+
   // Ajouter l'événement de sauvegarde si le bouton existe
   if (btnSaveSettings) {
     btnSaveSettings.addEventListener('click', saveSettings);
   }
+
+  // Le thème s'applique instantanément (pas besoin du bouton "Enregistrer")
+  if (themeToggleCheckbox) {
+    themeToggleCheckbox.addEventListener('change', () => {
+      const theme = themeToggleCheckbox.checked ? 'light' : 'dark';
+      applyTheme(theme);
+      window.LMUCharts?.refreshTheme?.();
+      persistedSettings.theme = theme;
+      writePersistedSettings(persistedSettings);
+    });
+  }
+}
+
+// Applique le thème au document (data-theme sur <html>)
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
 }
 
 // Charger le dossier de résultats sauvegardé
@@ -260,15 +279,17 @@ function getAllSettings() {
     driverName: getConfiguredDriverName(),
     selectedCarClass: loadSelectedCarClass(),
     loadAllSessionsDirectly: loadLoadAllSessionsDirectly(),
-    loadTypes: loadSelectedLoadTypes()
+    loadTypes: loadSelectedLoadTypes(),
+    theme: persistedSettings.theme === 'light' ? 'light' : 'dark'
   };
 }
 
 // Réinitialiser tous les paramètres
 async function resetSettings() {
-  persistedSettings = { resultsFolder: '', driverName: '', selectedCarClass: 'Hyper', loadAllSessionsDirectly: false, loadTypes: { race: true, qual: true, practice: true } };
+  persistedSettings = { resultsFolder: '', driverName: '', selectedCarClass: 'Hyper', loadAllSessionsDirectly: false, loadTypes: { race: true, qual: true, practice: true }, theme: 'dark' };
   await writePersistedSettings(persistedSettings);
   applySettingsToUI();
+  applyTheme(persistedSettings.theme);
   
   if (window.LMUStatsCalculator && window.LMUStatsCalculator.invalidateCache) {
     window.LMUStatsCalculator.invalidateCache();
@@ -286,7 +307,8 @@ async function ensureSettingsLoaded() {
       driverName: fromDisk.driverName || '',
       selectedCarClass: fromDisk.selectedCarClass || 'Hyper',
       loadAllSessionsDirectly: !!fromDisk.loadAllSessionsDirectly,
-      loadTypes: fromDisk.loadTypes || { race: true, qual: true, practice: true }
+      loadTypes: fromDisk.loadTypes || { race: true, qual: true, practice: true },
+      theme: fromDisk.theme === 'light' ? 'light' : 'dark'
     };
   } else {
     // Migration depuis localStorage si présent
@@ -294,11 +316,11 @@ async function ensureSettingsLoaded() {
       const lsFolder = localStorage.getItem(STORAGE_KEYS.RESULTS_FOLDER) || '';
       const lsDriver = localStorage.getItem(STORAGE_KEYS.DRIVER_NAME) || '';
       const lsClass = localStorage.getItem(STORAGE_KEYS.SELECTED_CAR_CLASS) || 'Hyper';
-  persistedSettings = { resultsFolder: lsFolder, driverName: lsDriver, selectedCarClass: lsClass, loadAllSessionsDirectly: false, loadTypes: { race: true, qual: true, practice: true } };
+  persistedSettings = { resultsFolder: lsFolder, driverName: lsDriver, selectedCarClass: lsClass, loadAllSessionsDirectly: false, loadTypes: { race: true, qual: true, practice: true }, theme: 'dark' };
       await writePersistedSettings(persistedSettings);
     } catch (_) {
       // Fallback par défaut
-  persistedSettings = { resultsFolder: '', driverName: '', selectedCarClass: 'Hyper', loadAllSessionsDirectly: false, loadTypes: { race: true, qual: true, practice: true } };
+  persistedSettings = { resultsFolder: '', driverName: '', selectedCarClass: 'Hyper', loadAllSessionsDirectly: false, loadTypes: { race: true, qual: true, practice: true }, theme: 'dark' };
       await writePersistedSettings(persistedSettings);
     }
   }
@@ -312,6 +334,7 @@ function applySettingsToUI() {
   if (loadTypeRaceCheckbox) loadTypeRaceCheckbox.checked = persistedSettings.loadTypes?.race !== false;
   if (loadTypeQualCheckbox) loadTypeQualCheckbox.checked = persistedSettings.loadTypes?.qual !== false;
   if (loadTypePracticeCheckbox) loadTypePracticeCheckbox.checked = persistedSettings.loadTypes?.practice !== false;
+  if (themeToggleCheckbox) themeToggleCheckbox.checked = persistedSettings.theme === 'light';
 }
 
 // Export des fonctions
@@ -336,6 +359,7 @@ if (typeof window !== 'undefined') {
     areBasicSettingsConfigured,
     getAllSettings,
     resetSettings,
+    applyTheme,
     STORAGE_KEYS
   };
 }

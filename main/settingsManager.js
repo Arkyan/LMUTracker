@@ -31,9 +31,25 @@ async function writeSettings(settingsObj) {
   }
 }
 
+// Lecture synchrone du thème seul, utilisée par le script de démarrage bloquant
+// (index.html/session.html) pour poser data-theme sur <html> avant le premier
+// paint et éviter un flash du mauvais thème.
+function readThemeSync() {
+  try {
+    const content = fsSync.readFileSync(getSettingsPath(), 'utf-8');
+    const data = JSON.parse(content);
+    return data.theme === 'light' ? 'light' : 'dark';
+  } catch (_) {
+    return 'dark';
+  }
+}
+
 function registerIpcHandlers() {
   ipcMain.handle('settings-read', () => readSettings());
   ipcMain.handle('settings-write', (_event, settingsObj) => writeSettings(settingsObj));
+  ipcMain.on('settings-read-theme-sync', (event) => {
+    event.returnValue = readThemeSync();
+  });
 }
 
 module.exports = { readSettings, writeSettings, registerIpcHandlers };

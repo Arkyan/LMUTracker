@@ -555,7 +555,8 @@ function getTracksForDriver(driverName, files) {
           bestLapSec: Infinity,
           sessionCount: 0,
           lapCount: 0,
-          vehicles: new Set()
+          vehicles: new Set(),
+          classes: new Set()
         };
       }
       const entry = result[trackKey];
@@ -566,6 +567,8 @@ function getTracksForDriver(driverName, files) {
       entry.lapCount += (myDriver.laps || []).length;
       const vehicleName = myDriver.car || '';
       if (vehicleName) entry.vehicles.add(vehicleName);
+      const carClass = myDriver.carClass || '';
+      if (carClass) entry.classes.add(carClass);
     } catch (_) {}
   }
 
@@ -576,12 +579,12 @@ function getTracksForDriver(driverName, files) {
   return result;
 }
 
-// Retourner les stats détaillées pour un circuit et un véhicule donnés
-function getTrackDetailStats(driverName, files, trackVenue, trackCourse, vehicleName) {
+// Retourner les stats détaillées pour un circuit et une catégorie donnés
+function getTrackDetailStats(driverName, files, trackVenue, trackCourse, carClass) {
   const result = {
     trackVenue,
     trackCourse,
-    vehicleName,
+    carClass,
     sessions: [],
     allLaps: [],
     bestLapSec: NaN,
@@ -596,7 +599,7 @@ function getTrackDetailStats(driverName, files, trackVenue, trackCourse, vehicle
   const driverNames = parseConfiguredDriverNames(driverName);
   if (driverNames.length === 0) return result;
 
-  const vehicleLower = String(vehicleName || '').toLowerCase();
+  const classLower = String(carClass || '').toLowerCase();
 
   for (const file of files) {
     if (file.error) continue;
@@ -624,9 +627,9 @@ function getTrackDetailStats(driverName, files, trackVenue, trackCourse, vehicle
         const nameMatch = driverNames.includes(primary) ||
           (d.allDrivers || []).map(normalizeName).some(n => driverNames.includes(n));
         if (!nameMatch) return false;
-        // Vehicle matching: case-insensitive includes
-        const driverVeh = String(d.car || '').toLowerCase();
-        return vehicleLower && driverVeh.includes(vehicleLower) || vehicleLower === driverVeh;
+        // Class matching: exact match, insensible à la casse
+        const driverClass = String(d.carClass || '').toLowerCase();
+        return classLower && driverClass === classLower;
       });
       if (!myDriver) continue;
 

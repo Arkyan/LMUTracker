@@ -192,6 +192,7 @@
       const trackStats = window.LMUStatsCalculator ? window.LMUStatsCalculator.getCachedTrackStatsForVehicle(driverName, files, vehicleName, carClass) : {};
       if (window.LMUProfileManager && window.LMUProfileManager.generateVehicleTrackPerformanceSection) {
         container.innerHTML = window.LMUProfileManager.generateVehicleTrackPerformanceSection(vehicleName, carClass, trackStats);
+        window.LMUProfileManager.renderVehicleTrackChart?.(trackStats);
       } else {
         container.innerHTML = `<div class="card"><p class="muted">Aucune donnée disponible</p></div>`;
       }
@@ -219,30 +220,32 @@
       const driverName = window.LMUStorage?.getConfiguredDriverName?.() || '';
       const files = window.LMUFileManager?.getLastScannedFiles?.() || [];
       const { venue, course } = window.__lmu_currentTrack || {};
-      const selectedVehicle = window.__lmu_currentTrackVehicle || null;
+      const selectedClass = window.__lmu_currentTrackClass || null;
       if (!venue) { switchView('tracks'); return; }
 
-      // Get all vehicles for this track
+      // Récupérer les catégories disponibles pour ce circuit
       const tracksData = window.LMUStatsCalculator?.getTracksForDriver?.(driverName, files) || {};
       const trackKey = `${venue}||${course}`;
       const trackInfo = tracksData[trackKey];
-      const allVehicles = trackInfo ? Array.from(trackInfo.vehicles || []).sort() : [];
+      const getPriority = window.LMUUtils?.getClassPriority || (() => 999);
+      const allClasses = trackInfo ? Array.from(trackInfo.classes || []).sort((a, b) => getPriority(a) - getPriority(b)) : [];
 
-      // Default to first vehicle if none selected
-      const vehicle = selectedVehicle || allVehicles[0] || '';
-      window.__lmu_currentTrackVehicle = vehicle;
+      // Défaut à la première catégorie si aucune sélectionnée
+      const carClass = selectedClass || allClasses[0] || '';
+      window.__lmu_currentTrackClass = carClass;
 
-      const stats = vehicle
-        ? window.LMUStatsCalculator?.getTrackDetailStats?.(driverName, files, venue, course, vehicle)
+      const stats = carClass
+        ? window.LMUStatsCalculator?.getTrackDetailStats?.(driverName, files, venue, course, carClass)
         : null;
 
-      container.innerHTML = window.LMUTrackManager?.generateTrackDetailPage?.(venue, course, stats, allVehicles, vehicle) || '';
+      container.innerHTML = window.LMUTrackManager?.generateTrackDetailPage?.(venue, course, stats, allClasses, carClass) || '';
+      window.LMUTrackManager?.renderTrackDetailCharts?.(stats);
 
-      // Attach vehicle selector change handler
-      const sel = container.querySelector('#trackVehicleSelector');
+      // Attach class selector change handler
+      const sel = container.querySelector('#trackClassSelector');
       if (sel) {
         sel.addEventListener('change', () => {
-          window.__lmu_currentTrackVehicle = sel.value;
+          window.__lmu_currentTrackClass = sel.value;
           handleViewSwitch('trackDetail');
         });
       }
@@ -256,9 +259,9 @@
     }
   }
 
-  function navigateToTrackDetail(venue, course, vehicle) {
+  function navigateToTrackDetail(venue, course, carClass) {
     window.__lmu_currentTrack = { venue, course };
-    window.__lmu_currentTrackVehicle = vehicle || null;
+    window.__lmu_currentTrackClass = carClass || null;
     try { window.history.pushState({ type: 'track', venue, course }, '', '#track'); } catch(_) {}
     switchView('trackDetail');
   }

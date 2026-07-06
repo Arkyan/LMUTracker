@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('lmuAPI', {
   // Paramètres persistés
   readSettings: () => ipcRenderer.invoke('settings-read'),
   writeSettings: (settingsObj) => ipcRenderer.invoke('settings-write', settingsObj),
+  // Lecture synchrone du thème seul (boot, avant premier paint - anti-flash)
+  readThemeSync: () => ipcRenderer.sendSync('settings-read-theme-sync'),
   // Nouveau: listing meta et parsing par lots
   listLmuFiles: (folderPath) => ipcRenderer.invoke('list-lmu-files', folderPath),
   parseLmuFiles: (filePaths) => ipcRenderer.invoke('parse-lmu-files', filePaths),

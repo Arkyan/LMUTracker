@@ -328,26 +328,34 @@ function registerIpcHandlers() {
         fs.stat(fp).then(st => ({ fp, st })).catch(() => ({ fp, st: null }))
       ));
 
+      // Ne garder que les fichiers "frais" (metadata DB alignée avec fs.stat), puis
+      // récupérer leurs données en un seul aller-retour BDD (4 requêtes IN (...) au
+      // total pour tout le lot, au lieu d'une cascade de requêtes par fichier).
+      const freshPaths = [];
       for (const { fp, st } of statResults) {
         if (!st) { toParse.push(fp); continue; }
+        const dbInfo = dbInfoMap.get(fp);
+        const isFresh = dbInfo &&
+          Number(dbInfo.file_size) === st.size &&
+          Number(dbInfo.file_mtime) === Math.floor(st.mtimeMs);
+        if (isFresh) freshPaths.push(fp); else toParse.push(fp);
+      }
+
+      const statByPath = new Map(statResults.map(({ fp, st }) => [fp, st]));
+      const batchData = freshPaths.length ? dbManager.getFileDataBatch(freshPaths) : new Map();
+
+      for (const fp of freshPaths) {
         try {
-          const dbInfo = dbInfoMap.get(fp);
-          const isFresh = dbInfo &&
-            Number(dbInfo.file_size) === st.size &&
-            Number(dbInfo.file_mtime) === Math.floor(st.mtimeMs);
-          if (isFresh) {
-            const dbData = dbManager.getFileData(fp);
-            if (dbData && isDbDataCompatible(dbData)) {
-              const parsed = convertDbDataToParsedFormat(dbData);
-              let sessionTimeMs = null;
-              try {
-                const dt = dbData?.metadata?.date_time;
-                if (dt) sessionTimeMs = parseInt(dt) * 1000;
-              } catch {}
-              cached.push({ filePath: fp, parsed, mtimeMs: st.mtimeMs, mtimeIso: st.mtime.toISOString(), sessionTimeMs, fromDb: true });
-            } else {
-              toParse.push(fp);
-            }
+          const st = statByPath.get(fp);
+          const dbData = batchData.get(fp);
+          if (dbData && isDbDataCompatible(dbData)) {
+            const parsed = convertDbDataToParsedFormat(dbData);
+            let sessionTimeMs = null;
+            try {
+              const dt = dbData?.metadata?.date_time;
+              if (dt) sessionTimeMs = parseInt(dt) * 1000;
+            } catch {}
+            cached.push({ filePath: fp, parsed, mtimeMs: st.mtimeMs, mtimeIso: st.mtime.toISOString(), sessionTimeMs, fromDb: true });
           } else {
             toParse.push(fp);
           }

@@ -8,8 +8,8 @@
   const { fmtTime, formatDateTime, getClassInfo, getSessionInfo } = window.LMUUtils || {};
   const { getRaceResultsRoot } = window.LMUXMLParser || {};
 
-// Générer une carte de session pour la liste des fichiers
-function generateSessionCard(file) {
+// Générer une ligne de session pour la liste de l'historique
+function generateSessionRow(file) {
   const dt = file.mtimeIso ? new Date(file.mtimeIso) : null;
   const rr = getRaceResultsRoot(file.parsed);
   const event = rr?.TrackEvent || 'Session inconnue';
@@ -60,35 +60,25 @@ function generateSessionCard(file) {
       }
       if (carClass) {
         const classDetails = getClassInfo ? getClassInfo(carClass) : { icon: '<i class="fas fa-flag-checkered"></i>', color: 'var(--accent)' };
-        classInfo = `<span style="background:${classDetails.color};color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;">${carClass}</span>`;
+        classInfo = `<span class="class-badge" style="background:${classDetails.color};">${carClass}</span>`;
       }
     }
   }
-  
+
   const fileName = file.filePath.split(/\\|\//).pop();
   const disabled = !!file.error;
-  
-  // Informations de voiture et classe
-  const vehicleInfo = [carInfo, classInfo].filter(Boolean).join(' ');
-  
-  return `<div class="card" style="cursor:${disabled ? 'not-allowed' : 'pointer'};opacity:${disabled ? 0.6 : 1};transition:transform 0.2s, box-shadow 0.2s;" data-file-path="${disabled ? '' : encodeURIComponent(file.filePath)}">
-    <div style="margin-bottom:12px;">
-      <div style="font-weight:700;color:var(--text);font-size:18px;margin-bottom:4px;">
-        <i class="fas fa-flag-checkered"></i> ${event}
-      </div>
-      <div style="color:var(--muted);font-size:14px;margin-bottom:8px;">
-        <i class="fas fa-map-marker-alt"></i> ${venue}
-      </div>
-      <div style="color:var(--muted);font-size:12px;margin-bottom:8px;">
-        <i class="fas fa-calendar-alt"></i> ${timeString}
-      </div>
-      ${vehicleInfo ? `<div style="margin-bottom:8px;">${vehicleInfo}</div>` : ''}
-      <div style="color:var(--muted);font-size:10px;word-break:break-all;">
-        <i class="fas fa-file"></i> ${fileName}
-      </div>
-      ${file.error ? `<div style="color:var(--err);font-size:12px;margin-top:8px;"><i class="fas fa-times-circle"></i> ${file.error}</div>` : ''}
+
+  return `<div class="data-row${disabled ? ' is-disabled' : ''}" data-file-path="${disabled ? '' : encodeURIComponent(file.filePath)}" title="${fileName}">
+    <span class="data-row__icon"><i class="fas fa-flag-checkered"></i></span>
+    <div class="data-row__primary">
+      <div class="data-row__title">${event}</div>
+      <div class="data-row__subtitle"><i class="fas fa-map-marker-alt"></i> ${venue} · ${timeString}</div>
     </div>
-    ${disabled ? '<span class="chip" style="background:var(--err);color:#000;">Erreur</span>' : '<span class="chip" style="background:var(--accent);color:#fff;">Voir les stats →</span>'}
+    ${carInfo ? `<div class="data-row__col"><span class="data-row__col-label">Voiture</span><span class="data-row__col-value">${carInfo}</span></div>` : ''}
+    ${classInfo ? `<div class="data-row__col">${classInfo}</div>` : ''}
+    ${disabled
+      ? `<span class="chip chip--danger"><i class="fas fa-times-circle"></i> ${file.error}</span>`
+      : '<span class="data-row__chevron"><i class="fas fa-chevron-right"></i></span>'}
   </div>`;
 }
 
@@ -99,27 +89,24 @@ function generateRecentSessionCards(sessions) {
     const sessionInfo = getSessionInfo(session.session);
     
     // Badge pour le mode de jeu
-    const gameModeBadge = session.gameMode === 'Multijoueur' 
-      ? '<span style="background:#8b5cf6;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;"><i class="fas fa-globe"></i> MULTI</span>'
-      : '<span style="background:#64748b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;"><i class="fas fa-user"></i> SOLO</span>';
-    
+    const gameModeBadge = session.gameMode === 'Multijoueur'
+      ? '<span class="badge-mode badge-mode--multi"><i class="fas fa-globe"></i> MULTI</span>'
+      : '<span class="badge-mode badge-mode--solo"><i class="fas fa-user"></i> SOLO</span>';
+
     cards.push(`
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--panel);border-radius:8px;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="font-size:20px;">${sessionInfo.icon}</div>
-        <div>
-          <div style="font-weight:600;color:var(--text);margin-bottom:4px;">${session.event}</div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${session.track} • ${session.date}</div>
-          <div>${sessionInfo.badge}${gameModeBadge}</div>
-        </div>
+    <div class="data-row">
+      <span class="data-row__icon">${sessionInfo.icon}</span>
+      <div class="data-row__primary">
+        <div class="data-row__title">${session.event} ${sessionInfo.badge}${gameModeBadge}</div>
+        <div class="data-row__subtitle">${session.track} · ${session.date}</div>
       </div>
-      <div style="text-align:right;">
-        <div style="font-weight:600;color:var(--ok);">${fmtTime(session.bestLap)}</div>
-        <div style="font-size:12px;color:var(--muted);">P${session.position || '?'}</div>
+      <div class="data-row__col">
+        <span class="data-row__col-label">P${session.position || '?'}</span>
+        <span class="data-row__col-value data-row__col-value--accent mono">${fmtTime(session.bestLap)}</span>
       </div>
     </div>`);
   }
-  return cards.join('');
+  return `<div class="row-list">${cards.join('')}</div>`;
 }
 
 // Générer les cartes de circuit pour les statistiques par circuit
@@ -144,28 +131,28 @@ function generateTrackCards(trackStatsEntries, carClass = 'Hyper') {
     const lapCount = stats.totalLaps || 0;
     
     cards.push(`
-    <div style="padding:16px;background:var(--panel);border-radius:8px;border:2px solid var(--border);border-left:4px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-      <div style="margin-bottom:12px;">
-        <div style="font-weight:600;color:var(--text);margin-bottom:6px;"><i class="fas fa-road"></i> ${track.trackName}</div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
-          <span style="font-size:12px;color:var(--muted);"><i class="fas fa-chart-line"></i> ${sessionCount} session(s)</span>
-          <span style="font-size:12px;color:var(--muted);"><i class="fas fa-redo"></i> ${lapCount} tour(s)</span>
-          <span style="font-size:12px;color:var(--muted);"><i class="fas fa-calendar-alt"></i> ${lastSessionText}</span>
-          <span style="font-size:12px;color:var(--accent);font-weight:600;"><i class="fas fa-flag-checkered"></i> ${carClass}</span>
+    <div class="track-card">
+      <div class="track-card__header">
+        <div class="track-card__title"><i class="fas fa-road"></i> ${track.trackName}</div>
+        <div class="track-card__meta-row">
+          <span class="track-card__meta-item"><i class="fas fa-chart-line"></i> ${sessionCount} session(s)</span>
+          <span class="track-card__meta-item"><i class="fas fa-redo"></i> ${lapCount} tour(s)</span>
+          <span class="track-card__meta-item"><i class="fas fa-calendar-alt"></i> ${lastSessionText}</span>
+          <span class="track-card__class-tag"><i class="fas fa-flag-checkered"></i> ${carClass}</span>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center;">
+      <div class="track-card__kpis">
         <div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;"><i class="fas fa-stopwatch"></i> MEILLEUR</div>
-          <div style="font-weight:600;color:var(--ok);font-size:14px;">${bestLapText}</div>
+          <div class="track-card__kpi-label"><i class="fas fa-stopwatch"></i> MEILLEUR</div>
+          <div class="track-card__kpi-value track-card__kpi-value--ok mono">${bestLapText}</div>
         </div>
         <div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;"><i class="fas fa-chart-line"></i> MOYENNE</div>
-          <div style="font-weight:600;color:var(--text);font-size:14px;">${avgLapText}</div>
+          <div class="track-card__kpi-label"><i class="fas fa-chart-line"></i> MOYENNE</div>
+          <div class="track-card__kpi-value mono">${avgLapText}</div>
         </div>
         <div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;"><i class="fas fa-tachometer-alt"></i> V.MAX</div>
-          <div style="font-weight:600;color:var(--accent);font-size:14px;">${topSpeedText}</div>
+          <div class="track-card__kpi-label"><i class="fas fa-tachometer-alt"></i> V.MAX</div>
+          <div class="track-card__kpi-value track-card__kpi-value--accent mono">${topSpeedText}</div>
         </div>
       </div>
     </div>`);
@@ -189,9 +176,8 @@ function generateClassFilterButtons(selectedCarClass) {
     const isActive = selectedCarClass === carClass;
     const icon = classIcons[carClass] || '<i class="fas fa-flag-checkered"></i>';
     return `
-      <button 
-        class="btn ${isActive ? 'primary' : ''}" 
-        style="font-size:12px;padding:6px 12px;${isActive ? '' : 'background:var(--panel);color:var(--text);'}"
+      <button
+        class="btn class-filter-btn ${isActive ? 'primary' : ''}"
         onclick="filterByCarClass('${carClass}')"
       >
         ${icon} ${carClass}
@@ -207,8 +193,8 @@ function renderSessionInto(container, fileLabel, session) {
   // fileLabel volontairement ignoré pour ne plus afficher le nom/chemin du fichier
   
   // En-tête de session
-  html += `<div style="background:linear-gradient(135deg,rgba(96,165,250,0.1),rgba(167,139,250,0.1));border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;">
-    <div style="font-size:18px;font-weight:600;margin-bottom:8px;color:var(--accent);"><i class="fas fa-flag-checkered"></i> ${meta.event || 'Session'}</div>
+  html += `<div class="session-hero">
+    <div class="session-hero__title"><i class="fas fa-flag-checkered"></i> ${meta.event || 'Session'}</div>
     <div class="row" style="gap:16px;flex-wrap:wrap;">
       <span class="chip"><i class="fas fa-road"></i> ${meta.track || ''}</span>
       <span class="chip"><i class="fas fa-calendar-alt"></i> ${meta.session}</span>
@@ -218,7 +204,7 @@ function renderSessionInto(container, fileLabel, session) {
   </div>`;
   
   // Tableau des résultats (plein largeur du conteneur)
-  html += `<table class="table centered" style="width:100%;"><thead><tr>
+  html += `<div style="overflow-x:auto;"><table class="table centered" style="width:100%;"><thead><tr>
     <th><i class="fas fa-trophy"></i></th><th>Pilote</th><th>Classe</th><th>Voiture</th><th><i class="fas fa-stopwatch"></i> Meilleur</th><th><i class="fas fa-chart-line"></i> Moyenne</th><th><i class="fas fa-redo"></i> Tours</th><th><i class="fas fa-gas-pump"></i> Pits</th><th><i class="fas fa-tachometer-alt"></i> V.Max</th><th><i class="fas fa-flag-checkered"></i> Statut</th>
   </tr></thead><tbody>`;
   
@@ -231,20 +217,21 @@ function renderSessionInto(container, fileLabel, session) {
       const classInfo = getClassInfo(currentClass);
       
       html += `<tr class="class-separator">
-        <td colspan="10" style="background:${classInfo.color};color:#fff;font-weight:700;text-align:center;padding:12px;border:none;font-size:14px;">
-          ${classInfo.icon} CLASSE ${currentClass.toUpperCase()}
+        <td colspan="10" class="class-separator-cell" style="background:rgb(from ${classInfo.color} r g b / 0.1);border-left:3px solid ${classInfo.color};color:${classInfo.color};">
+          ${classInfo.icon} ${currentClass.toUpperCase()}
         </td>
       </tr>`;
     }
-    
+
     const driverId = `drv_${(d.displayName||'').replace(/[^a-z0-9]/gi,'_')}_${Math.random().toString(36).slice(2,7)}`;
-    
+
     // Badge de position
-    const positionBadge = isFinite(d.classPosition) && d.classPosition > 0 ? 
-      `<div class="badge" style="background:${d.classPosition === 1 ? 'linear-gradient(135deg,#fbbf24,#f59e0b)' : 
-      d.classPosition === 2 ? 'linear-gradient(135deg,#94a3b8,#64748b)' : 
-      d.classPosition === 3 ? 'linear-gradient(135deg,#fb923c,#ea580c)' : 
-      'linear-gradient(135deg,var(--accent),var(--purple))'}">${d.classPosition}</div>` : '';
+    const positionBadgeClass = d.classPosition === 1 ? 'badge-position--gold'
+      : d.classPosition === 2 ? 'badge-position--silver'
+      : d.classPosition === 3 ? 'badge-position--bronze'
+      : 'badge-position--other';
+    const positionBadge = isFinite(d.classPosition) && d.classPosition > 0 ?
+      `<div class="badge ${positionBadgeClass}">${d.classPosition}</div>` : '';
     
     const classPositionDisplay = isFinite(d.classPosition) && d.classPosition > 0 ? `P${d.classPosition}` : '';
     const overallDisplay = isFinite(d.position) && d.position > 0 ? `(${d.position}e Overall)` : '';
@@ -253,37 +240,37 @@ function renderSessionInto(container, fileLabel, session) {
     
     // Tag de classe
     const classInfo = getClassInfo(d.carClass);
-    const classTag = d.carClass ? 
-      `<span class="chip" style="background:${classInfo.color};color:#fff;border:none;font-weight:600;font-size:11px;">${d.carClass}</span>` : '';
-    
+    const classTag = d.carClass ?
+      `<span class="chip class-tag" style="background:${classInfo.color};">${d.carClass}</span>` : '';
+
     // Statut de fin
     const finishStatus = d.finishStatus || 'N/A';
     let statusDisplay = '';
     if (finishStatus === 'Finished Normally') {
-      statusDisplay = `<span class="chip" style="background:#22c55e;color:#fff;border:none;font-weight:600;font-size:11px;"><i class="fas fa-check"></i> FINI</span>`;
+      statusDisplay = `<span class="chip chip--success"><i class="fas fa-check"></i> FINI</span>`;
     } else if (finishStatus === 'DNF') {
-      statusDisplay = `<span class="chip" style="background:#ef4444;color:#fff;border:none;font-weight:600;font-size:11px;"><i class="fas fa-times"></i> DNF</span>`;
+      statusDisplay = `<span class="chip chip--danger"><i class="fas fa-times"></i> DNF</span>`;
     } else {
-      statusDisplay = `<span class="chip" style="background:var(--muted);color:#fff;border:none;font-weight:600;font-size:11px;"><i class="fas fa-question"></i> ${finishStatus}</span>`;
+      statusDisplay = `<span class="chip chip--neutral"><i class="fas fa-question"></i> ${finishStatus}</span>`;
     }
-    
+
     html += `<tr class="section-header" data-target="${driverId}" style="cursor:pointer;">
-      <td>${positionBadge}<div style="font-size:11px;color:var(--muted);margin-top:2px;">${positionText}</div></td>
-      <td style="font-weight:600;color:var(--text);">${d.displayName || d.name}</td>
+      <td>${positionBadge}<div class="driver-position-note">${positionText}</div></td>
+      <td class="driver-name-cell">${d.displayName || d.name}</td>
       <td>${classTag}</td>
       <td><span class="chip">${d.car || ''}</span></td>
-      <td style="font-weight:600;color:var(--ok);">${fmtTime(d.bestLapSec)}</td>
-      <td style="color:var(--muted);">${fmtTime(d.avgLapSec)}</td>
-      <td>${d.lapsCount}</td>
-      <td>${d.pitstops}</td>
-      <td style="font-weight:600;color:var(--accent);">${isFinite(d.topSpeedMax) ? d.topSpeedMax.toFixed(1)+' km/h' : '—'}</td>
+      <td class="driver-laptime-cell mono">${fmtTime(d.bestLapSec)}</td>
+      <td class="driver-avglap-cell mono">${fmtTime(d.avgLapSec)}</td>
+      <td class="mono">${d.lapsCount}</td>
+      <td class="mono">${d.pitstops}</td>
+      <td class="driver-topspeed-cell mono">${isFinite(d.topSpeedMax) ? d.topSpeedMax.toFixed(1)+' km/h' : '—'}</td>
       <td>${statusDisplay}</td>
     </tr>
     <tr class="section-content" id="${driverId}" style="display:none;">
       <td colspan="10">
-        <div class="card" style="margin:8px;background:var(--panel);">
-          <div style="font-weight:600;margin-bottom:12px;color:var(--accent);"><i class="fas fa-clipboard-list"></i> Tours détaillés</div>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div class="card driver-detail-card">
+          <div class="driver-detail-card__title"><i class="fas fa-clipboard-list"></i> Tours détaillés</div>
+          <div class="driver-detail-card__tables">
             ${generateLapDetailsTable(d.laps)}
           </div>
         </div>
@@ -291,7 +278,7 @@ function renderSessionInto(container, fileLabel, session) {
     </tr>`;
   }
   
-  html += `</tbody></table>`;
+  html += `</tbody></table></div>`;
   container.innerHTML = html;
   
   // Ajouter les événements de clic pour les détails des pilotes
@@ -314,27 +301,29 @@ function generateLapDetailsTable(laps) {
   const rightLaps = laps.slice(midPoint);
   
   const createTableColumn = (lapsData, title) => `
-    <div style="flex:1;min-width:300px;">
-      <h4 style="margin:0 0 8px 0;color:var(--muted);font-size:14px;">${title}</h4>
-      <table class="table">
+    <div class="lap-table-col">
+      <h4 class="lap-table-col__title">${title}</h4>
+      <div style="overflow-x:auto;">
+      <table class="table" style="width:100%;">
         <thead><tr>
           <th>#</th><th>Temps</th><th>S1</th><th>S2</th><th>S3</th><th>TopSpeed</th><th>Pit</th>
         </tr></thead>
         <tbody>
           ${lapsData.map(l => `<tr>
-            <td>${isFinite(l.num) ? l.num : ''}</td>
-            <td style="font-weight:500;">${fmtTime(l.timeSec)}</td>
-            <td>${isFinite(l.s1) ? l.s1.toFixed(3) : ''}</td>
-            <td>${isFinite(l.s2) ? l.s2.toFixed(3) : ''}</td>
-            <td>${isFinite(l.s3) ? l.s3.toFixed(3) : ''}</td>
-            <td>${isFinite(l.topSpeed) && l.topSpeed > 0 ? l.topSpeed.toFixed(1)+' km/h' : '—'}</td>
-            <td>${l.pit ? '<span class="chip" style="background:var(--warn);color:#000;"><i class="fas fa-gas-pump"></i> Pit</span>' : ''}</td>
+            <td class="mono">${isFinite(l.num) ? l.num : ''}</td>
+            <td class="mono" style="font-weight:500;">${fmtTime(l.timeSec)}</td>
+            <td class="mono">${isFinite(l.s1) ? l.s1.toFixed(3) : ''}</td>
+            <td class="mono">${isFinite(l.s2) ? l.s2.toFixed(3) : ''}</td>
+            <td class="mono">${isFinite(l.s3) ? l.s3.toFixed(3) : ''}</td>
+            <td class="mono">${isFinite(l.topSpeed) && l.topSpeed > 0 ? l.topSpeed.toFixed(1)+' km/h' : '—'}</td>
+            <td>${l.pit ? '<span class="chip chip--warning"><i class="fas fa-gas-pump"></i> Pit</span>' : ''}</td>
           </tr>`).join('')}
         </tbody>
       </table>
+      </div>
     </div>
   `;
-  
+
   let html = '';
   if (leftLaps.length > 0) {
     html += createTableColumn(leftLaps, `Tours 1-${leftLaps.length}`);
@@ -348,7 +337,7 @@ function generateLapDetailsTable(laps) {
 // Export des fonctions
 if (typeof window !== 'undefined') {
   window.LMURenderEngine = {
-    generateSessionCard,
+    generateSessionRow,
     generateRecentSessionCards,
     generateTrackCards,
     generateClassFilterButtons,
@@ -359,7 +348,7 @@ if (typeof window !== 'undefined') {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    generateSessionCard,
+    generateSessionRow,
     generateRecentSessionCards,
     generateTrackCards,
     generateClassFilterButtons,
